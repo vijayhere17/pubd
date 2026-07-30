@@ -1,0 +1,185 @@
+import { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { api } from '../lib/api'
+import { useWallet } from '../hooks/useWallet'
+import { useToast } from '../store/toast'
+
+type Settings = Record<string, unknown>
+
+export function Admin() {
+  const { address } = useWallet()
+  const navigate = useNavigate()
+  const toast = useToast()
+  const [stats, setStats] = useState<Record<string, unknown> | null>(null)
+  const [settings, setSettings] = useState<Settings>({})
+  const [investors, setInvestors] = useState<unknown[]>([])
+  const [tab, setTab] = useState<'settings' | 'investors' | 'stakers' | 'claims'>('settings')
+  const [stakers, setStakers] = useState<unknown[]>([])
+  const [claims, setClaims] = useState<unknown[]>([])
+
+  useEffect(() => {
+    if (!address || !localStorage.getItem('pabd_token')) {
+      navigate('/')
+      return
+    }
+    Promise.all([
+      api.get('/admin/dashboard'),
+      api.get('/admin/settings'),
+    ]).then(([dash, set]) => {
+      setStats(dash.data)
+      setSettings(set.data)
+    }).catch(() => {
+      toast.push('Admin access required', 'error')
+      navigate('/dashboard')
+    })
+  }, [address, navigate, toast])
+
+  async function saveSettings(e: React.FormEvent) {
+    e.preventDefault()
+    try {
+      const { data } = await api.put('/admin/settings', settings)
+      setSettings(data)
+      toast.push('Settings saved', 'success')
+    } catch (err) {
+      toast.push((err as Error).message || 'Save failed', 'error')
+    }
+  }
+
+  async function loadTab(next: typeof tab) {
+    setTab(next)
+    if (next === 'investors') {
+      const { data } = await api.get('/admin/investors')
+      setInvestors(data.data || data)
+    }
+    if (next === 'stakers') {
+      const { data } = await api.get('/admin/stakers')
+      setStakers(data.data || data)
+    }
+    if (next === 'claims') {
+      const { data } = await api.get('/admin/claims')
+      setClaims(data.data || data)
+    }
+  }
+
+  if (!stats) {
+    return <div className="flex min-h-screen items-center justify-center text-[#b9c2d6]">Loading admin…</div>
+  }
+
+  return (
+    <div className="min-h-screen px-4 py-6 md:px-8">
+      <div className="mx-auto max-w-6xl">
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-[#f6e3aa]">Admin Panel</h1>
+            <p className="text-sm text-[#7c879f]">Sale, vesting, staking and investor controls</p>
+          </div>
+          <Link to="/dashboard" className="rounded-xl border border-white/10 px-4 py-2 text-sm">User Dashboard</Link>
+        </header>
+
+        <section className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {([
+            ['Investors', stats.investors],
+            ['Raised USDT', stats.total_raised_usdt],
+            ['Tokens Sold', stats.total_purchased_tokens],
+            ['Active Stakers', stats.active_stakers],
+            ['Total Staked', stats.total_staked],
+            ['Total Claimed', stats.total_claimed],
+          ] as Array<[string, unknown]>).map(([label, value]) => (
+            <article key={label} className="glass rounded-2xl p-4">
+              <small className="text-[#7c879f]">{label}</small>
+              <div className="mt-1 text-xl text-[#f6e3aa]">{Number(value as number || 0).toLocaleString()}</div>
+            </article>
+          ))}
+        </section>
+
+        <div className="mb-4 flex flex-wrap gap-2">
+          {(['settings', 'investors', 'stakers', 'claims'] as const).map((t) => (
+            <button key={t} onClick={() => loadTab(t)} className={`rounded-xl px-4 py-2 text-sm capitalize ${tab === t ? 'bg-[#d9a94f] text-[#0a1226] font-semibold' : 'border border-white/10'}`}>{t}</button>
+          ))}
+          <button
+            onClick={async () => { await api.post('/admin/sale/pause'); toast.push('Sale paused', 'info') }}
+            className="rounded-xl border border-rose-400/30 px-4 py-2 text-sm text-rose-200"
+          >Pause Sale</button>
+          <button
+            onClick={async () => { await api.post('/admin/sale/resume'); toast.push('Sale resumed', 'success') }}
+            className="rounded-xl border border-emerald-400/30 px-4 py-2 text-sm text-emerald-200"
+          >Resume Sale</button>
+          <button
+            type="button"
+            onClick={async () => {
+              const res = await api.get('/admin/export', { params: { type: 'purchases' }, responseType: 'blob' })
+              const url = URL.createObjectURL(res.data)
+              const a = document.createElement('a')
+              a.href = url
+              a.download = 'pabd-purchases.csv'
+              a.click()
+              URL.revokeObjectURL(url)
+            }}
+            className="rounded-xl border border-white/10 px-4 py-2 text-sm"
+          >Export Reports</button>
+        </div>
+
+        {tab === 'settings' && (
+          <form onSubmit={saveSettings} className="glass grid gap-4 rounded-2xl p-6 md:grid-cols-2">
+            {[
+              ['token_price', 'Token Price'],
+              ['min_buy', 'Minimum Buy'],
+              ['max_buy', 'Maximum Buy'],
+              ['usdt_address', 'USDT Address'],
+              ['treasury_wallet', 'Treasury Wallet'],
+              ['token_address', 'Token Address'],
+              ['sale_address', 'Sale Address'],
+              ['staking_address', 'Staking Address'],
+              ['vesting_address', 'Vesting Address'],
+              ['stake_apy_default', 'Stake APY'],
+              ['chain_id', 'Chain ID'],
+              ['explorer_url', 'Explorer URL'],
+            ].map(([key, label]) => (
+              <label key={key} className="block text-sm">
+                <span className="mb-1 block text-[#7c879f]">{label}</span>
+                <input
+                  className="w-full rounded-xl border border-white/10 bg-[#040914] px-3 py-2"
+                  value={String(settings[key] ?? '')}
+                  onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.value }))}
+                />
+              </label>
+            ))}
+            <label className="block text-sm md:col-span-2">
+              <span className="mb-1 block text-[#7c879f]">Vesting Schedule (JSON)</span>
+              <textarea
+                className="min-h-28 w-full rounded-xl border border-white/10 bg-[#040914] px-3 py-2 font-mono text-xs"
+                value={JSON.stringify(settings.vesting_schedule ?? [], null, 2)}
+                onChange={(e) => {
+                  try { setSettings((s) => ({ ...s, vesting_schedule: JSON.parse(e.target.value) })) } catch { /* keep typing */ }
+                }}
+              />
+            </label>
+            <label className="block text-sm md:col-span-2">
+              <span className="mb-1 block text-[#7c879f]">Lock Periods (JSON)</span>
+              <textarea
+                className="min-h-28 w-full rounded-xl border border-white/10 bg-[#040914] px-3 py-2 font-mono text-xs"
+                value={JSON.stringify(settings.lock_periods ?? [], null, 2)}
+                onChange={(e) => {
+                  try { setSettings((s) => ({ ...s, lock_periods: JSON.parse(e.target.value) })) } catch { /* keep typing */ }
+                }}
+              />
+            </label>
+            <div className="md:col-span-2">
+              <button className="rounded-xl bg-gradient-to-r from-[#d9a94f] to-[#b3812c] px-5 py-3 font-semibold text-[#0a1226]">Save Settings</button>
+            </div>
+          </form>
+        )}
+
+        {tab === 'investors' && (
+          <pre className="glass overflow-auto rounded-2xl p-4 text-xs text-[#b9c2d6]">{JSON.stringify(investors, null, 2)}</pre>
+        )}
+        {tab === 'stakers' && (
+          <pre className="glass overflow-auto rounded-2xl p-4 text-xs text-[#b9c2d6]">{JSON.stringify(stakers, null, 2)}</pre>
+        )}
+        {tab === 'claims' && (
+          <pre className="glass overflow-auto rounded-2xl p-4 text-xs text-[#b9c2d6]">{JSON.stringify(claims, null, 2)}</pre>
+        )}
+      </div>
+    </div>
+  )
+}

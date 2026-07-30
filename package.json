@@ -1,0 +1,11 @@
+{
+  "name": "pabd-dapp",
+  "private": true,
+  "scripts": {
+    "dev:api": "cd backend && php artisan serve --host=127.0.0.1 --port=8000",
+    "dev:web": "cd frontend && npm run dev",
+    "build:web": "cd frontend && npm run build",
+    "test:contracts": "cd contracts && forge test",
+    "test:api": "cd backend && php artisan test"
+  }
+}
