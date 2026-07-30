@@ -44,16 +44,22 @@ class SaleSetting extends Model
 
     public static function current(): self
     {
-        return static::query()->firstOrCreate([], [
+        $settings = static::query()->firstOrCreate([], [
             'token_price' => 0.10,
             'sale_active' => true,
             'sale_start' => now(),
             'sale_end' => now()->addYear(),
             'min_buy' => 10,
             'max_buy' => 100000,
-            'chain_id' => 56,
-            'explorer_url' => 'https://bscscan.com',
+            'chain_id' => (int) env('PABD_CHAIN_ID', 56),
+            'explorer_url' => env('PABD_EXPLORER_URL', 'https://bscscan.com'),
             'stake_apy_default' => 12,
+            'usdt_address' => env('PABD_USDT_ADDRESS'),
+            'token_address' => env('PABD_TOKEN_ADDRESS'),
+            'sale_address' => env('PABD_SALE_ADDRESS'),
+            'staking_address' => env('PABD_STAKING_ADDRESS'),
+            'vesting_address' => env('PABD_VESTING_ADDRESS'),
+            'treasury_wallet' => env('PABD_TREASURY_WALLET'),
             'lock_periods' => [
                 ['days' => 100, 'apy' => 8],
                 ['days' => 200, 'apy' => 10],
@@ -69,5 +75,27 @@ class SaleSetting extends Model
                 ['days' => 500, 'unlock_percent' => 60],
             ],
         ]);
+
+        // Keep env-provided addresses in sync when DB fields are still empty.
+        $fromEnv = array_filter([
+            'usdt_address' => env('PABD_USDT_ADDRESS'),
+            'token_address' => env('PABD_TOKEN_ADDRESS'),
+            'sale_address' => env('PABD_SALE_ADDRESS'),
+            'staking_address' => env('PABD_STAKING_ADDRESS'),
+            'vesting_address' => env('PABD_VESTING_ADDRESS'),
+            'treasury_wallet' => env('PABD_TREASURY_WALLET'),
+        ]);
+
+        foreach ($fromEnv as $key => $value) {
+            if (empty($settings->{$key}) && ! empty($value)) {
+                $settings->{$key} = $value;
+            }
+        }
+
+        if ($settings->isDirty()) {
+            $settings->save();
+        }
+
+        return $settings;
     }
 }

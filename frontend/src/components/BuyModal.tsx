@@ -34,7 +34,7 @@ export function BuyModal({ open, onClose, dashboard, onSuccess }: Props) {
       return
     }
     if (!settings.usdt_address || !settings.sale_address) {
-      toast.push('Sale contracts not configured by admin yet', 'error')
+      toast.push('Open Admin → Settings and paste USDT + Sale contract addresses, then Save', 'error')
       return
     }
     setLoading(true)
