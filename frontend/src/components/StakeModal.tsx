@@ -6,6 +6,8 @@ import { useToast } from '../store/toast'
 import { ERC20_ABI } from '../lib/config'
 import { Contract } from 'ethers'
 
+type LockPeriod = { days: number; percent?: number; apy?: number }
+
 type Props = {
   open: boolean
   onClose: () => void
@@ -13,28 +15,41 @@ type Props = {
   onSuccess: (next: DashboardData) => void
 }
 
+const DEFAULT_PERIODS: LockPeriod[] = [
+  { days: 100, percent: 8 },
+  { days: 200, percent: 20 },
+  { days: 300, percent: 30 },
+  { days: 400, percent: 45 },
+  { days: 500, percent: 60 },
+]
+
+function periodPercent(p?: LockPeriod) {
+  return Number(p?.percent ?? p?.apy ?? 0)
+}
+
 export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
   const { getSigner, ensureBsc } = useWallet()
   const toast = useToast()
-  const periods = dashboard.settings.lock_periods || [
-    { days: 100, apy: 8 }, { days: 200, apy: 10 }, { days: 300, apy: 12 }, { days: 400, apy: 15 }, { days: 500, apy: 18 },
-  ]
+  const periods = (dashboard.settings.lock_periods as LockPeriod[] | undefined)?.length
+    ? (dashboard.settings.lock_periods as LockPeriod[])
+    : DEFAULT_PERIODS
   const [amount, setAmount] = useState('')
   const [lockDays, setLockDays] = useState(periods[0]?.days || 100)
   const [loading, setLoading] = useState(false)
   const available = dashboard.available_tokens
-  const apy = periods.find((p) => p.days === lockDays)?.apy || 12
-  const reward = useMemo(() => {
-    const n = Number(amount) || 0
-    return n * (apy / 100) * (lockDays / 365)
-  }, [amount, apy, lockDays])
+  const selected = periods.find((p) => p.days === lockDays)
+  const bonusPercent = periodPercent(selected)
+
+  const stakeAmount = Number(amount) || 0
+  const reward = useMemo(() => stakeAmount * (bonusPercent / 100), [stakeAmount, bonusPercent])
+  const totalReturn = stakeAmount + reward
 
   if (!open) return null
 
   async function handleStake() {
     const n = Number(amount)
     if (!n || n > available) {
-      toast.push('Enter an amount within your available balance', 'error')
+      toast.push('Enter an amount within your available PAB-D balance', 'error')
       return
     }
     const { token_address, staking_address } = dashboard.settings
@@ -56,10 +71,10 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
       const res = await recordStake({
         amount: n,
         lock_days: lockDays,
-        apy,
+        apy: bonusPercent, // stored as flat bonus percent for selected period
         tx_hash: hash,
       })
-      toast.push('Transaction Successful', 'success')
+      toast.push(`Staked! You will claim ${totalReturn.toLocaleString()} PAB-D after ${lockDays} days.`, 'success')
       onSuccess(res.dashboard)
       onClose()
     } catch (e) {
@@ -76,15 +91,19 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
           <h2 className="text-2xl font-semibold text-[#f6e3aa]">Stake PAB-D</h2>
           <button onClick={onClose} className="text-[#7c879f]">✕</button>
         </div>
-        <p className="mb-5 text-[#b9c2d6]">Available: {available.toLocaleString()} PAB-D</p>
-        <label className="mb-2 block text-sm text-[#7c879f]">Stake Amount</label>
+        <p className="mb-1 text-[#b9c2d6]">Staking is in <b className="text-[#f0d48a]">PAB-D</b> (not USDT).</p>
+        <p className="mb-5 text-sm text-[#7c879f]">Available: {available.toLocaleString()} PAB-D</p>
+
+        <label className="mb-2 block text-sm text-[#7c879f]">Stake Amount (PAB-D)</label>
         <input
           type="number"
           min="0"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           className="mb-4 w-full rounded-xl border border-[rgba(217,169,79,0.25)] bg-[#040914] px-4 py-3 outline-none focus:border-[#d9a94f]"
+          placeholder="1000"
         />
+
         <label className="mb-2 block text-sm text-[#7c879f]">Lock Period</label>
         <select
           value={lockDays}
@@ -92,13 +111,24 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
           className="mb-4 w-full rounded-xl border border-[rgba(217,169,79,0.25)] bg-[#040914] px-4 py-3 outline-none"
         >
           {periods.map((p) => (
-            <option key={p.days} value={p.days}>{p.days} Days · {p.apy}% APY</option>
+            <option key={p.days} value={p.days}>
+              {p.days} Days · {periodPercent(p)}% Bonus
+            </option>
           ))}
         </select>
-        <div className="mb-6 flex items-center justify-between rounded-xl border border-white/5 bg-white/5 px-4 py-3">
-          <span className="text-[#7c879f]">Estimated reward</span>
-          <b className="text-[#f6e3aa]">{reward.toLocaleString(undefined, { maximumFractionDigits: 4 })} PAB-D</b>
+
+        <div className="mb-3 space-y-2 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[#7c879f]">Bonus</span>
+            <b className="text-[#f6e3aa]">{bonusPercent}% → {reward.toLocaleString(undefined, { maximumFractionDigits: 4 })} PAB-D</b>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[#7c879f]">You will receive</span>
+            <b className="text-xl text-[#f6e3aa]">{totalReturn.toLocaleString(undefined, { maximumFractionDigits: 4 })} PAB-D</b>
+          </div>
+          <p className="text-xs text-[#7c879f]">Shown instantly. Claimable only after {lockDays} days.</p>
         </div>
+
         <button
           disabled={loading}
           onClick={handleStake}

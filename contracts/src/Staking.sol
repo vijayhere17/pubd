@@ -8,7 +8,8 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 /// @title PAB-D Staking
-/// @notice Lock PAB-D for fixed periods and earn APY rewards
+/// @notice Stake PAB-D for fixed periods and earn a flat bonus unlocked at maturity
+/// @dev 100d=8%, 200d=20%, 300d=30%, 400d=45%, 500d=60%
 contract Staking is AccessControl, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -18,14 +19,14 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
 
     struct LockPeriod {
         uint256 daysLocked;
-        uint256 apyBps; // basis points, 1200 = 12%
+        uint256 rewardBps; // 800 = 8%
         bool active;
     }
 
     struct StakeInfo {
         uint256 amount;
         uint256 lockDays;
-        uint256 apyBps;
+        uint256 rewardBps;
         uint256 startTime;
         uint256 endTime;
         uint256 claimedRewards;
@@ -47,12 +48,12 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         uint256 indexed stakeId,
         uint256 amount,
         uint256 lockDays,
-        uint256 apyBps,
-        uint256 endTime
+        uint256 rewardBps,
+        uint256 endTime,
+        uint256 estimatedTotal
     );
     event Unstaked(address indexed user, uint256 indexed stakeId, uint256 amount, uint256 rewards);
-    event RewardsClaimed(address indexed user, uint256 indexed stakeId, uint256 rewards);
-    event LockPeriodUpdated(uint256 daysLocked, uint256 apyBps, bool active);
+    event LockPeriodUpdated(uint256 daysLocked, uint256 rewardBps, bool active);
     event RewardsFunded(uint256 amount);
 
     constructor(address admin, address pabd_) {
@@ -61,17 +62,20 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
         _grantRole(OPERATOR_ROLE, admin);
 
-        _setLockPeriod(100, 800, true);
-        _setLockPeriod(200, 1000, true);
-        _setLockPeriod(300, 1200, true);
-        _setLockPeriod(400, 1500, true);
-        _setLockPeriod(500, 1800, true);
+        _setLockPeriod(100, 800, true);   // 8%
+        _setLockPeriod(200, 2000, true);  // 20%
+        _setLockPeriod(300, 3000, true);  // 30%
+        _setLockPeriod(400, 4500, true);  // 45%
+        _setLockPeriod(500, 6000, true);  // 60%
     }
 
     function stake(uint256 amount, uint256 lockDays) external nonReentrant whenNotPaused {
         require(amount > 0, "Stake: amount");
         LockPeriod memory period = lockPeriods[lockDays];
         require(period.active, "Stake: period");
+
+        uint256 reward = (amount * period.rewardBps) / 10_000;
+        require(rewardReserve >= reward, "Stake: reserve");
 
         pabd.safeTransferFrom(msg.sender, address(this), amount);
 
@@ -81,7 +85,7 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         stakes[stakeId] = StakeInfo({
             amount: amount,
             lockDays: lockDays,
-            apyBps: period.apyBps,
+            rewardBps: period.rewardBps,
             startTime: block.timestamp,
             endTime: endTime,
             claimedRewards: 0,
@@ -92,36 +96,38 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         totalStakedOf[msg.sender] += amount;
         totalStaked += amount;
 
-        emit Staked(msg.sender, stakeId, amount, lockDays, period.apyBps, endTime);
+        emit Staked(
+            msg.sender,
+            stakeId,
+            amount,
+            lockDays,
+            period.rewardBps,
+            endTime,
+            amount + reward
+        );
+    }
+
+    function estimatedReward(uint256 amount, uint256 lockDays) external view returns (uint256) {
+        LockPeriod memory period = lockPeriods[lockDays];
+        if (!period.active || amount == 0) return 0;
+        return (amount * period.rewardBps) / 10_000;
     }
 
     function pendingRewards(uint256 stakeId) public view returns (uint256) {
         StakeInfo memory info = stakes[stakeId];
         if (!info.active || info.amount == 0) return 0;
-
-        uint256 elapsed = block.timestamp > info.endTime
-            ? info.endTime - info.startTime
-            : block.timestamp - info.startTime;
-
-        uint256 gross = (info.amount * info.apyBps * elapsed) / (10_000 * 365 days);
-        if (gross <= info.claimedRewards) return 0;
-        return gross - info.claimedRewards;
+        if (block.timestamp < info.endTime) return 0; // claimable only after lock ends
+        uint256 reward = (info.amount * info.rewardBps) / 10_000;
+        if (reward <= info.claimedRewards) return 0;
+        return reward - info.claimedRewards;
     }
 
-    function claimRewards(uint256 stakeId) external nonReentrant whenNotPaused {
-        StakeInfo storage info = stakes[stakeId];
-        require(info.active, "Stake: inactive");
-        require(_ownsStake(msg.sender, stakeId), "Stake: not owner");
-
-        uint256 rewards = pendingRewards(stakeId);
-        require(rewards > 0, "Stake: no rewards");
-        require(rewardReserve >= rewards, "Stake: reserve");
-
-        info.claimedRewards += rewards;
-        rewardReserve -= rewards;
-        pabd.safeTransfer(msg.sender, rewards);
-
-        emit RewardsClaimed(msg.sender, stakeId, rewards);
+    function previewTotal(uint256 stakeId) external view returns (uint256 principal, uint256 reward, uint256 total, bool claimable) {
+        StakeInfo memory info = stakes[stakeId];
+        principal = info.amount;
+        reward = (info.amount * info.rewardBps) / 10_000;
+        total = principal + reward;
+        claimable = info.active && block.timestamp >= info.endTime;
     }
 
     function unstake(uint256 stakeId) external nonReentrant whenNotPaused {
@@ -155,11 +161,11 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         emit RewardsFunded(amount);
     }
 
-    function setLockPeriod(uint256 daysLocked, uint256 apyBps, bool active)
+    function setLockPeriod(uint256 daysLocked, uint256 rewardBps, bool active)
         external
         onlyRole(OPERATOR_ROLE)
     {
-        _setLockPeriod(daysLocked, apyBps, active);
+        _setLockPeriod(daysLocked, rewardBps, active);
     }
 
     function pause() external onlyRole(OPERATOR_ROLE) {
@@ -178,8 +184,9 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         return lockPeriodDays;
     }
 
-    function _setLockPeriod(uint256 daysLocked, uint256 apyBps, bool active) internal {
+    function _setLockPeriod(uint256 daysLocked, uint256 rewardBps, bool active) internal {
         require(daysLocked > 0, "Stake: days");
+        require(rewardBps <= 10_000, "Stake: bps");
         if (!lockPeriods[daysLocked].active && active) {
             bool exists;
             for (uint256 i = 0; i < lockPeriodDays.length; i++) {
@@ -190,8 +197,8 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
             }
             if (!exists) lockPeriodDays.push(daysLocked);
         }
-        lockPeriods[daysLocked] = LockPeriod(daysLocked, apyBps, active);
-        emit LockPeriodUpdated(daysLocked, apyBps, active);
+        lockPeriods[daysLocked] = LockPeriod(daysLocked, rewardBps, active);
+        emit LockPeriodUpdated(daysLocked, rewardBps, active);
     }
 
     function _ownsStake(address user, uint256 stakeId) internal view returns (bool) {

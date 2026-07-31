@@ -61,11 +61,11 @@ class SaleSetting extends Model
             'vesting_address' => env('PABD_VESTING_ADDRESS'),
             'treasury_wallet' => env('PABD_TREASURY_WALLET'),
             'lock_periods' => [
-                ['days' => 100, 'apy' => 8],
-                ['days' => 200, 'apy' => 10],
-                ['days' => 300, 'apy' => 12],
-                ['days' => 400, 'apy' => 15],
-                ['days' => 500, 'apy' => 18],
+                ['days' => 100, 'percent' => 8],
+                ['days' => 200, 'percent' => 20],
+                ['days' => 300, 'percent' => 30],
+                ['days' => 400, 'percent' => 45],
+                ['days' => 500, 'percent' => 60],
             ],
             'vesting_schedule' => [
                 ['days' => 100, 'unlock_percent' => 8],
@@ -95,6 +95,19 @@ class SaleSetting extends Model
             if (empty($settings->{$key}) && ! empty($value)) {
                 $settings->{$key} = $value;
             }
+        }
+
+        // Keep product stake bonus schedule in sync (100d=8% ... 500d=60%).
+        $desiredPeriods = [
+            ['days' => 100, 'percent' => 8],
+            ['days' => 200, 'percent' => 20],
+            ['days' => 300, 'percent' => 30],
+            ['days' => 400, 'percent' => 45],
+            ['days' => 500, 'percent' => 60],
+        ];
+        if (($settings->lock_periods[0]['percent'] ?? $settings->lock_periods[0]['apy'] ?? null) !== 8
+            || count($settings->lock_periods ?? []) !== 5) {
+            $settings->lock_periods = $desiredPeriods;
         }
 
         if ($settings->isDirty()) {

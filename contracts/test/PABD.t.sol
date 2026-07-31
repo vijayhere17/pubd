@@ -5,14 +5,12 @@ import {Test} from "forge-std/Test.sol";
 import {PABDToken} from "../src/PABDToken.sol";
 import {PrivateSale} from "../src/PrivateSale.sol";
 import {Staking} from "../src/Staking.sol";
-import {VestingVault} from "../src/Vesting.sol";
 import {MockUSDT} from "../src/mocks/MockUSDT.sol";
 
 contract PABDTest is Test {
     PABDToken token;
     PrivateSale sale;
     Staking staking;
-    VestingVault vesting;
     MockUSDT usdt;
 
     address admin = address(0xA11CE);
@@ -23,7 +21,6 @@ contract PABDTest is Test {
         vm.startPrank(admin);
         usdt = new MockUSDT();
         token = new PABDToken(admin, admin);
-        vesting = new VestingVault(admin, address(token));
         staking = new Staking(admin, address(token));
         sale = new PrivateSale(
             admin,
@@ -37,8 +34,8 @@ contract PABDTest is Test {
             block.timestamp + 30 days
         );
         token.transfer(address(sale), 10_000_000 ether);
-        token.approve(address(staking), 1_000_000 ether);
-        staking.fundRewards(1_000_000 ether);
+        token.approve(address(staking), 5_000_000 ether);
+        staking.fundRewards(5_000_000 ether);
         usdt.transfer(buyer, 10_000 ether);
         vm.stopPrank();
     }
@@ -51,25 +48,35 @@ contract PABDTest is Test {
         sale.buy(100 ether);
         vm.stopPrank();
 
-        // 100 USDT / 0.10 = 1000 PAB-D instantly in wallet
         assertEq(sale.purchasedOf(buyer), 1000 ether);
         assertEq(token.balanceOf(buyer), beforeBal + 1000 ether);
     }
 
-    function testBuyThenStake() public {
+    function testStakeFlatBonusClaimAfterLock() public {
         vm.startPrank(buyer);
         usdt.approve(address(sale), 100 ether);
-        sale.buy(100 ether); // receive 1000 PAB-D
+        sale.buy(100 ether); // 1000 PAB-D
 
         token.approve(address(staking), 1000 ether);
         staking.stake(1000 ether, 100);
-        assertEq(staking.totalStakedOf(buyer), 1000 ether);
-        assertEq(token.balanceOf(buyer), 0);
+
+        // Instant preview: 1000 + 8% = 1080
+        (uint256 principal, uint256 reward, uint256 total, bool claimable) = staking.previewTotal(1);
+        assertEq(principal, 1000 ether);
+        assertEq(reward, 80 ether);
+        assertEq(total, 1080 ether);
+        assertEq(claimable, false);
+        assertEq(staking.pendingRewards(1), 0);
+
+        // Too early
+        vm.expectRevert("Stake: locked");
+        staking.unstake(1);
 
         vm.warp(block.timestamp + 100 days);
+        assertEq(staking.pendingRewards(1), 80 ether);
+
         staking.unstake(1);
-        assertEq(staking.totalStakedOf(buyer), 0);
-        assertGt(token.balanceOf(buyer), 1000 ether); // principal + rewards
+        assertEq(token.balanceOf(buyer), 1080 ether);
         vm.stopPrank();
     }
 
