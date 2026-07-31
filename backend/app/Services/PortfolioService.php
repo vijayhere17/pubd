@@ -70,6 +70,7 @@ class PortfolioService
                 'explorer_url' => $settings->explorer_url,
                 'lock_periods' => $settings->lock_periods,
                 'vesting_schedule' => $settings->vesting_schedule,
+                'min_stake' => 5000,
             ],
         ];
     }

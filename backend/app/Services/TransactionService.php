@@ -69,10 +69,16 @@ class TransactionService
 
         $amount = (float) $data['amount'];
         $lockDays = (int) $data['lock_days'];
+        $minStake = 5000; // 5000 PAB-D = $500 at $0.10
+        if ($amount < $minStake) {
+            throw ValidationException::withMessages([
+                'amount' => 'Minimum stake is 5000 PAB-D ($500 at current $0.10 price).',
+            ]);
+        }
         $periods = collect($settings->lock_periods ?? []);
         $period = $periods->firstWhere('days', $lockDays);
         $bonusPercent = (float) ($data['apy'] ?? ($period['percent'] ?? $period['apy'] ?? 8));
-        // Flat period bonus: stake 1000 for 100 days at 8% => reward 80 (total 1080)
+        // Flat period bonus: stake 5000 for 100 days at 8% => reward 400 (total 5400)
         $estimated = round($amount * ($bonusPercent / 100), 8);
 
         return DB::transaction(function () use ($user, $data, $txHash, $amount, $lockDays, $bonusPercent, $estimated, $settings) {

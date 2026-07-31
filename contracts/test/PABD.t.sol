@@ -53,30 +53,39 @@ contract PABDTest is Test {
     }
 
     function testStakeFlatBonusClaimAfterLock() public {
+        // Min stake is 5000 PAB-D => buy 500 USDT at $0.10
         vm.startPrank(buyer);
-        usdt.approve(address(sale), 100 ether);
-        sale.buy(100 ether); // 1000 PAB-D
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether); // 5000 PAB-D
 
-        token.approve(address(staking), 1000 ether);
-        staking.stake(1000 ether, 100);
+        token.approve(address(staking), 5000 ether);
+        staking.stake(5000 ether, 100);
 
-        // Instant preview: 1000 + 8% = 1080
         (uint256 principal, uint256 reward, uint256 total, bool claimable) = staking.previewTotal(1);
-        assertEq(principal, 1000 ether);
-        assertEq(reward, 80 ether);
-        assertEq(total, 1080 ether);
+        assertEq(principal, 5000 ether);
+        assertEq(reward, 400 ether); // 8% of 5000
+        assertEq(total, 5400 ether);
         assertEq(claimable, false);
         assertEq(staking.pendingRewards(1), 0);
 
-        // Too early
         vm.expectRevert("Stake: locked");
         staking.unstake(1);
 
         vm.warp(block.timestamp + 100 days);
-        assertEq(staking.pendingRewards(1), 80 ether);
+        assertEq(staking.pendingRewards(1), 400 ether);
 
         staking.unstake(1);
-        assertEq(token.balanceOf(buyer), 1080 ether);
+        assertEq(token.balanceOf(buyer), 5400 ether);
+        vm.stopPrank();
+    }
+
+    function testStakeRejectsBelowMinimum() public {
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 100 ether);
+        sale.buy(100 ether); // 1000 PAB-D < 5000 min
+        token.approve(address(staking), 1000 ether);
+        vm.expectRevert("Stake: min 5000");
+        staking.stake(1000 ether, 100);
         vm.stopPrank();
     }
 

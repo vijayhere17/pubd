@@ -37,6 +37,7 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
   const [lockDays, setLockDays] = useState(periods[0]?.days || 100)
   const [loading, setLoading] = useState(false)
   const available = dashboard.available_tokens
+  const minStake = Number((dashboard.settings as { min_stake?: number }).min_stake ?? 5000)
   const selected = periods.find((p) => p.days === lockDays)
   const bonusPercent = periodPercent(selected)
 
@@ -50,6 +51,10 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
     const n = Number(amount)
     if (!n || n > available) {
       toast.push('Enter an amount within your available PAB-D balance', 'error')
+      return
+    }
+    if (n < minStake) {
+      toast.push(`Minimum stake is ${minStake.toLocaleString()} PAB-D ($${(minStake * 0.1).toFixed(0)} at $0.10). Buy at least that much first.`, 'error')
       return
     }
     const { token_address, staking_address } = dashboard.settings
@@ -92,16 +97,17 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
           <button onClick={onClose} className="text-[#7c879f]">✕</button>
         </div>
         <p className="mb-1 text-[#b9c2d6]">Staking is in <b className="text-[#f0d48a]">PAB-D</b> (not USDT).</p>
-        <p className="mb-5 text-sm text-[#7c879f]">Available: {available.toLocaleString()} PAB-D</p>
+        <p className="mb-1 text-sm text-[#7c879f]">Available: {available.toLocaleString()} PAB-D</p>
+        <p className="mb-5 text-sm text-[#f0d48a]">Minimum stake: {minStake.toLocaleString()} PAB-D (${(minStake * (dashboard.token_price || 0.1)).toFixed(0)})</p>
 
         <label className="mb-2 block text-sm text-[#7c879f]">Stake Amount (PAB-D)</label>
         <input
           type="number"
-          min="0"
+          min={minStake}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           className="mb-4 w-full rounded-xl border border-[rgba(217,169,79,0.25)] bg-[#040914] px-4 py-3 outline-none focus:border-[#d9a94f]"
-          placeholder="1000"
+          placeholder={String(minStake)}
         />
 
         <label className="mb-2 block text-sm text-[#7c879f]">Lock Period</label>

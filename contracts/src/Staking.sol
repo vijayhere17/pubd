@@ -16,6 +16,7 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
 
     IERC20 public immutable pabd;
+    uint256 public minStakeAmount = 5000 ether; // 5000 PAB-D = $500 at $0.10
 
     struct LockPeriod {
         uint256 daysLocked;
@@ -70,7 +71,7 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
     }
 
     function stake(uint256 amount, uint256 lockDays) external nonReentrant whenNotPaused {
-        require(amount > 0, "Stake: amount");
+        require(amount >= minStakeAmount, "Stake: min 5000");
         LockPeriod memory period = lockPeriods[lockDays];
         require(period.active, "Stake: period");
 
@@ -153,6 +154,11 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         }
 
         emit Unstaked(msg.sender, stakeId, principal, rewards);
+    }
+
+    function setMinStakeAmount(uint256 amount) external onlyRole(OPERATOR_ROLE) {
+        require(amount > 0, "Stake: min");
+        minStakeAmount = amount;
     }
 
     function fundRewards(uint256 amount) external onlyRole(OPERATOR_ROLE) {

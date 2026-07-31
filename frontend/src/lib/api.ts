@@ -32,6 +32,7 @@ export type DashboardData = {
     sale_active: boolean
     min_buy: number
     max_buy: number
+    min_stake?: number
     usdt_address: string | null
     token_address: string | null
     sale_address: string | null

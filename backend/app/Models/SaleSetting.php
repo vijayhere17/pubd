@@ -53,7 +53,7 @@ class SaleSetting extends Model
             'max_buy' => 100000,
             'chain_id' => (int) env('PABD_CHAIN_ID', 56),
             'explorer_url' => env('PABD_EXPLORER_URL', 'https://bscscan.com'),
-            'stake_apy_default' => 12,
+            'stake_apy_default' => 8,
             'usdt_address' => env('PABD_USDT_ADDRESS', '0x55d398326f99059fF775485246999027B3197955'),
             'token_address' => env('PABD_TOKEN_ADDRESS'),
             'sale_address' => env('PABD_SALE_ADDRESS'),
