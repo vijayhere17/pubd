@@ -97,7 +97,7 @@ class SaleSetting extends Model
             }
         }
 
-        // Keep product stake bonus schedule in sync (100d=8% ... 500d=60%).
+        // Always keep PPT stake bonus schedule: 100=8, 200=20, 300=30, 400=45, 500=60.
         $desiredPeriods = [
             ['days' => 100, 'percent' => 8],
             ['days' => 200, 'percent' => 20],
@@ -105,8 +105,11 @@ class SaleSetting extends Model
             ['days' => 400, 'percent' => 45],
             ['days' => 500, 'percent' => 60],
         ];
-        if (($settings->lock_periods[0]['percent'] ?? $settings->lock_periods[0]['apy'] ?? null) !== 8
-            || count($settings->lock_periods ?? []) !== 5) {
+        $current = collect($settings->lock_periods ?? [])->map(fn ($p) => [
+            'days' => (int) ($p['days'] ?? 0),
+            'percent' => (int) ($p['percent'] ?? $p['apy'] ?? 0),
+        ])->values()->all();
+        if ($current !== $desiredPeriods) {
             $settings->lock_periods = $desiredPeriods;
         }
 

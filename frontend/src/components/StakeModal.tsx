@@ -15,7 +15,8 @@ type Props = {
   onSuccess: (next: DashboardData) => void
 }
 
-const DEFAULT_PERIODS: LockPeriod[] = [
+// PPT schedule (source of truth for UI)
+const PPT_PERIODS: LockPeriod[] = [
   { days: 100, percent: 8 },
   { days: 200, percent: 20 },
   { days: 300, percent: 30 },
@@ -24,20 +25,22 @@ const DEFAULT_PERIODS: LockPeriod[] = [
 ]
 
 function periodPercent(p?: LockPeriod) {
-  return Number(p?.percent ?? p?.apy ?? 0)
+  if (!p) return 0
+  // Prefer PPT mapping by days if API still has old apy values
+  const ppt = PPT_PERIODS.find((x) => x.days === p.days)
+  if (ppt) return ppt.percent!
+  return Number(p.percent ?? p.apy ?? 0)
 }
 
 export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
   const { getSigner, ensureBsc } = useWallet()
   const toast = useToast()
-  const periods = (dashboard.settings.lock_periods as LockPeriod[] | undefined)?.length
-    ? (dashboard.settings.lock_periods as LockPeriod[])
-    : DEFAULT_PERIODS
+  const periods = PPT_PERIODS
   const [amount, setAmount] = useState('')
-  const [lockDays, setLockDays] = useState(periods[0]?.days || 100)
+  const [lockDays, setLockDays] = useState(100)
   const [loading, setLoading] = useState(false)
   const available = dashboard.available_tokens
-  const minStake = Number((dashboard.settings as { min_stake?: number }).min_stake ?? 5000)
+  const minStake = Number(dashboard.settings.min_stake ?? 5000)
   const selected = periods.find((p) => p.days === lockDays)
   const bonusPercent = periodPercent(selected)
 
@@ -54,7 +57,7 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
       return
     }
     if (n < minStake) {
-      toast.push(`Minimum stake is ${minStake.toLocaleString()} PAB-D ($${(minStake * 0.1).toFixed(0)} at $0.10). Buy at least that much first.`, 'error')
+      toast.push(`Minimum stake is ${minStake.toLocaleString()} PAB-D. Buy enough PAB-D first.`, 'error')
       return
     }
     const { token_address, staking_address } = dashboard.settings
@@ -76,7 +79,7 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
       const res = await recordStake({
         amount: n,
         lock_days: lockDays,
-        apy: bonusPercent, // stored as flat bonus percent for selected period
+        apy: bonusPercent,
         tx_hash: hash,
       })
       toast.push(`Staked! You will claim ${totalReturn.toLocaleString()} PAB-D after ${lockDays} days.`, 'success')
@@ -96,9 +99,9 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
           <h2 className="text-2xl font-semibold text-[#f6e3aa]">Stake PAB-D</h2>
           <button onClick={onClose} className="text-[#7c879f]">✕</button>
         </div>
-        <p className="mb-1 text-[#b9c2d6]">Staking is in <b className="text-[#f0d48a]">PAB-D</b> (not USDT).</p>
+        <p className="mb-1 text-[#b9c2d6]">Staking is in <b className="text-[#f0d48a]">PAB-D</b> only.</p>
         <p className="mb-1 text-sm text-[#7c879f]">Available: {available.toLocaleString()} PAB-D</p>
-        <p className="mb-5 text-sm text-[#f0d48a]">Minimum stake: {minStake.toLocaleString()} PAB-D (${(minStake * (dashboard.token_price || 0.1)).toFixed(0)})</p>
+        <p className="mb-5 text-sm text-[#f0d48a]">Minimum stake: {minStake.toLocaleString()} PAB-D</p>
 
         <label className="mb-2 block text-sm text-[#7c879f]">Stake Amount (PAB-D)</label>
         <input
