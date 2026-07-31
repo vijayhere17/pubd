@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom'
 import { BuyModal } from '../components/BuyModal'
 import { StakeModal } from '../components/StakeModal'
 import { useWallet } from '../hooks/useWallet'
-import { claimVested, getContracts, readTokenBalance } from '../lib/contracts'
-import { fetchDashboard, recordClaim, type DashboardData } from '../lib/api'
+import { getContracts, readTokenBalance } from '../lib/contracts'
+import { fetchDashboard, type DashboardData } from '../lib/api'
 import { useToast } from '../store/toast'
 import { defaultUsdtAddress } from '../lib/config'
 
@@ -26,14 +26,13 @@ async function copyText(text: string) {
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { address, disconnect, getSigner, provider, ensureBsc } = useWallet()
+  const { address, disconnect, provider } = useWallet()
   const toast = useToast()
   const [data, setData] = useState<DashboardData | null>(null)
   const [balances, setBalances] = useState({ bnb: 0, usdt: 0, pabd: 0 })
   const [loading, setLoading] = useState(true)
   const [buyOpen, setBuyOpen] = useState(false)
   const [stakeOpen, setStakeOpen] = useState(false)
-  const [claiming, setClaiming] = useState(false)
   const [copied, setCopied] = useState(false)
 
   const refresh = useCallback(async () => {
@@ -80,29 +79,6 @@ export function Dashboard() {
     }
     loadBalances()
   }, [provider, address, data])
-
-  async function handleClaim() {
-    if (!data || data.claimable_tokens <= 0) return
-    if (!data.settings.vesting_address) {
-      toast.push('Vesting contract not configured', 'error')
-      return
-    }
-    setClaiming(true)
-    try {
-      await ensureBsc()
-      const signer = await getSigner()
-      const { vesting } = getContracts(signer, { vesting: data.settings.vesting_address })
-      if (!vesting) throw new Error('Vesting missing')
-      const { hash } = await claimVested(vesting)
-      const res = await recordClaim({ amount: data.claimable_tokens, tx_hash: hash, type: 'vesting' })
-      setData(res.dashboard)
-      toast.push('Transaction Successful', 'success')
-    } catch (e) {
-      toast.push((e as Error).message || 'Claim failed', 'error')
-    } finally {
-      setClaiming(false)
-    }
-  }
 
   async function handleCopy() {
     if (!address) return
@@ -258,7 +234,7 @@ export function Dashboard() {
           </article>
         </section>
 
-        {/* Portfolio + Vesting */}
+        {/* Portfolio + Staking overview */}
         <section className="mb-6 grid gap-4 lg:grid-cols-2" id="portfolio">
           <article className="dash-card animate-fade-up p-5">
             <div className="mb-4 text-xs uppercase tracking-[0.14em] text-[#7f8aa5]">Portfolio Overview</div>
@@ -266,11 +242,8 @@ export function Dashboard() {
               {[
                 ['Total Purchased', `${fmt(data.total_purchased)} PAB-D`],
                 ['Total Staked', `${fmt(data.total_staked)} PAB-D`],
-                ['Available Tokens', `${fmt(data.available_tokens)} PAB-D`],
-                ['Locked Tokens', `${fmt(data.locked_tokens)} PAB-D`],
-                ['Unlocked Tokens', `${fmt(data.unlocked_tokens)} PAB-D`],
-                ['Claimable Tokens', `${fmt(data.claimable_tokens)} PAB-D`],
-                ['Total Claimed', `${fmt(data.total_claimed)} PAB-D`],
+                ['Available to Stake', `${fmt(data.available_tokens)} PAB-D`],
+                ['Locked in Staking', `${fmt(data.locked_tokens)} PAB-D`],
                 ['Portfolio Value', `$${fmt(data.portfolio_value)}`],
                 ['Estimated Rewards', `${fmt(data.estimated_rewards)} PAB-D`],
                 ['Next Unlock Date', data.next_unlock_date ? new Date(data.next_unlock_date).toLocaleDateString() : '—'],
@@ -284,33 +257,20 @@ export function Dashboard() {
           </article>
 
           <article className="dash-card animate-fade-up p-5">
-            <div className="mb-4 text-xs uppercase tracking-[0.14em] text-[#7f8aa5]">Vesting</div>
-            <div className="mb-2 flex justify-between text-sm text-[#b9c2d6]">
-              <span>Progress</span>
-              <span>{fmt(data.vesting_progress, 0)}%</span>
-            </div>
-            <div className="h-3 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-[#d9a94f] to-[#efcd75] transition-all duration-700"
-                style={{ width: `${Math.min(100, data.vesting_progress)}%` }}
-              />
-            </div>
+            <div className="mb-4 text-xs uppercase tracking-[0.14em] text-[#7f8aa5]">How it works</div>
+            <ol className="space-y-3 text-sm text-[#b9c2d6]">
+              <li><b className="text-[#f0d48a]">1. Buy</b> — Pay USDT, get PAB-D instantly in your wallet.</li>
+              <li><b className="text-[#9db7ff]">2. Stake</b> — Lock PAB-D for 100–500 days and earn APY rewards.</li>
+              <li><b className="text-white">3. Unstake later</b> — After lock ends, get principal + rewards.</li>
+            </ol>
             <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Purchased</div><b>{fmt(data.total_purchased)}</b></div>
-              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Locked</div><b>{fmt(data.locked_tokens)}</b></div>
-              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Unlocked</div><b>{fmt(data.unlocked_tokens)}</b></div>
-              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Claimable</div><b>{fmt(data.claimable_tokens)}</b></div>
+              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Wallet PAB-D</div><b>{fmt(balances.pabd)}</b></div>
+              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Available</div><b>{fmt(data.available_tokens)}</b></div>
+              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Staked</div><b>{fmt(data.total_staked)}</b></div>
+              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Rewards Est.</div><b>{fmt(data.estimated_rewards)}</b></div>
             </div>
-            <p className="mt-4 text-sm text-[#7f8aa5]">
-              Next unlock: {data.next_unlock_date ? new Date(data.next_unlock_date).toLocaleString() : 'No unlock pending'}
-              {data.next_unlock_percent ? ` · ${data.next_unlock_percent}%` : ''}
-            </p>
-            <button
-              disabled={data.claimable_tokens <= 0 || claiming}
-              onClick={handleClaim}
-              className="dash-btn-gold mt-5 w-full disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {claiming ? 'Claiming…' : 'Claim Tokens'}
+            <button onClick={() => setStakeOpen(true)} className="dash-btn-blue mt-5 w-full">
+              Stake Available PAB-D →
             </button>
           </article>
         </section>

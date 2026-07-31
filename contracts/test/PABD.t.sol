@@ -30,49 +30,46 @@ contract PABDTest is Test {
             address(usdt),
             address(token),
             treasury,
-            address(vesting),
             0.1 ether,
             10 ether,
             100_000 ether,
             block.timestamp,
             block.timestamp + 30 days
         );
-        vesting.grantRole(vesting.SALE_ROLE(), address(sale));
         token.transfer(address(sale), 10_000_000 ether);
         token.approve(address(staking), 1_000_000 ether);
         staking.fundRewards(1_000_000 ether);
         usdt.transfer(buyer, 10_000 ether);
-        token.transfer(buyer, 50_000 ether);
         vm.stopPrank();
     }
 
-    function testBuyAndVestClaim() public {
+    function testBuySendsTokensInstantlyToWallet() public {
+        uint256 beforeBal = token.balanceOf(buyer);
+
         vm.startPrank(buyer);
         usdt.approve(address(sale), 100 ether);
         sale.buy(100 ether);
         vm.stopPrank();
 
+        // 100 USDT / 0.10 = 1000 PAB-D instantly in wallet
         assertEq(sale.purchasedOf(buyer), 1000 ether);
-        assertEq(vesting.claimable(buyer), 0);
-
-        vm.warp(block.timestamp + 100 days);
-        assertEq(vesting.claimable(buyer), 80 ether); // 8%
-
-        vm.prank(buyer);
-        vesting.claim();
-        assertEq(token.balanceOf(buyer), 50_000 ether + 80 ether);
+        assertEq(token.balanceOf(buyer), beforeBal + 1000 ether);
     }
 
-    function testStakeAndUnstake() public {
+    function testBuyThenStake() public {
         vm.startPrank(buyer);
+        usdt.approve(address(sale), 100 ether);
+        sale.buy(100 ether); // receive 1000 PAB-D
+
         token.approve(address(staking), 1000 ether);
         staking.stake(1000 ether, 100);
-        uint256 stakeId = 1;
         assertEq(staking.totalStakedOf(buyer), 1000 ether);
+        assertEq(token.balanceOf(buyer), 0);
 
         vm.warp(block.timestamp + 100 days);
-        staking.unstake(stakeId);
+        staking.unstake(1);
         assertEq(staking.totalStakedOf(buyer), 0);
+        assertGt(token.balanceOf(buyer), 1000 ether); // principal + rewards
         vm.stopPrank();
     }
 

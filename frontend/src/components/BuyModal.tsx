@@ -77,7 +77,7 @@ export function BuyModal({ open, onClose, dashboard, onSuccess }: Props) {
         confirmations: 1,
         status: 'confirmed',
       })
-      toast.push('Transaction Successful', 'success')
+      toast.push('Purchase successful! PAB-D is in your wallet. You can stake now.', 'success')
       onSuccess(res.dashboard)
       onClose()
     } catch (e) {
@@ -94,7 +94,8 @@ export function BuyModal({ open, onClose, dashboard, onSuccess }: Props) {
           <h2 className="text-2xl font-semibold text-[#f6e3aa]">Buy PAB-D</h2>
           <button onClick={onClose} className="text-[#7c879f]">✕</button>
         </div>
-        <p className="mb-5 text-[#b9c2d6]">1 PAB-D = ${price.toFixed(2)}</p>
+        <p className="mb-2 text-[#b9c2d6]">1 PAB-D = ${price.toFixed(2)}</p>
+        <p className="mb-5 text-xs text-[#7c879f]">Pay USDT and receive PAB-D instantly in your wallet, then you can stake it.</p>
         <label className="mb-2 block text-sm text-[#7c879f]">USDT Amount</label>
         <input
           type="number"
