@@ -1,8 +1,7 @@
 type Props = {
   open: boolean
   onClose: () => void
-  onMetaMask: () => void
-  onTrustWallet: () => void
+  onBrowserWallet: () => void
   onWalletConnect: () => void
   connecting: boolean
 }
@@ -10,8 +9,7 @@ type Props = {
 export function ConnectModal({
   open,
   onClose,
-  onMetaMask,
-  onTrustWallet,
+  onBrowserWallet,
   onWalletConnect,
   connecting,
 }: Props) {
@@ -22,36 +20,31 @@ export function ConnectModal({
         <div className="mb-5 flex items-start justify-between">
           <div>
             <h2 className="text-xl font-semibold text-[#f6e3aa]">Connect Wallet</h2>
-            <p className="mt-1 text-sm text-[#b9c2d6]">BNB Smart Chain · MetaMask, Trust Wallet & more</p>
+            <p className="mt-1 text-sm text-[#b9c2d6]">BNB Smart Chain · All wallets supported</p>
           </div>
           <button className="text-[#7c879f] hover:text-white" onClick={onClose}>✕</button>
         </div>
+
         <div className="space-y-3">
           <button
             disabled={connecting}
-            onClick={onMetaMask}
+            onClick={onWalletConnect}
             className="w-full rounded-xl border border-[rgba(217,169,79,0.35)] bg-gradient-to-r from-[#d9a94f] to-[#b3812c] px-4 py-3 font-semibold text-[#0a1226] transition hover:brightness-110 disabled:opacity-60"
           >
-            {connecting ? 'Connecting…' : 'MetaMask'}
+            {connecting ? 'Connecting…' : 'Connect Any Wallet'}
           </button>
+
           <button
             disabled={connecting}
-            onClick={onTrustWallet}
-            className="w-full rounded-xl border border-[#3375BB]/50 bg-[#0b1c3d] px-4 py-3 font-semibold text-[#eef2fa] transition hover:bg-[#13284f] disabled:opacity-60"
-          >
-            Trust Wallet
-          </button>
-          <button
-            disabled={connecting}
-            onClick={onWalletConnect}
+            onClick={onBrowserWallet}
             className="w-full rounded-xl border border-[rgba(61,100,184,0.45)] bg-[#16294f] px-4 py-3 font-semibold text-[#eef2fa] transition hover:bg-[#1d3563] disabled:opacity-60"
           >
-            WalletConnect (all wallets)
+            Browser Wallet (MetaMask / Trust / etc.)
           </button>
         </div>
+
         <p className="mt-4 text-xs leading-5 text-[#7c879f]">
-          Trust Wallet mobile and other wallets use WalletConnect QR.
-          Set <code className="text-[#b9c2d6]">VITE_WC_PROJECT_ID</code> in frontend/.env.
+          “Connect Any Wallet” opens WalletConnect — Trust Wallet, TokenPocket, Binance, Rainbow, and 300+ wallets.
         </p>
       </div>
     </div>

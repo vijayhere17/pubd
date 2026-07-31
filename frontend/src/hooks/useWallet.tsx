@@ -145,13 +145,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [finishConnect, toast])
 
-  const connectWalletConnect = useCallback(async (label = 'WalletConnect') => {
+  const connectWalletConnect = useCallback(async (label = 'Wallet') => {
     setConnecting(true)
     try {
-      if (!WC_PROJECT_ID || WC_PROJECT_ID === 'pabd_demo_project_id') {
-        throw new Error(
-          'Set VITE_WC_PROJECT_ID in frontend/.env (from https://cloud.reown.com) to enable Trust Wallet and other mobile wallets.',
-        )
+      if (!WC_PROJECT_ID) {
+        throw new Error('WalletConnect Project ID missing.')
       }
 
       const wc = await EthereumProvider.init({
@@ -164,8 +162,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         metadata: {
           name: 'PAB-D',
           description: 'PAB-D Private Sale & Staking',
-          url: window.location.origin,
-          icons: [`${window.location.origin}/vite.svg`],
+          url: typeof window !== 'undefined' ? window.location.origin : 'https://pabd.finance',
+          icons: [typeof window !== 'undefined' ? `${window.location.origin}/pabd-logo.png` : ''],
         },
         qrModalOptions: {
           themeMode: 'dark',
@@ -177,7 +175,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       toast.push(`${label} connected`, 'success')
       return addr
     } catch (e: unknown) {
-      toast.push((e as Error).message || 'WalletConnect failed', 'error')
+      toast.push((e as Error).message || 'Wallet connection failed', 'error')
       throw e
     } finally {
       setConnecting(false)

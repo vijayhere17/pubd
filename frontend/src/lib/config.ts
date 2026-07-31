@@ -1,6 +1,10 @@
 export const API_URL = import.meta.env.VITE_API_URL || '/api'
 export const CHAIN_ID = Number(import.meta.env.VITE_CHAIN_ID || 56)
-export const WC_PROJECT_ID = import.meta.env.VITE_WC_PROJECT_ID || ''
+// WalletConnect / Reown Project ID (public client id) — enables Trust Wallet + all WC wallets
+export const WC_PROJECT_ID =
+  import.meta.env.VITE_WC_PROJECT_ID && import.meta.env.VITE_WC_PROJECT_ID !== 'pabd_demo_project_id'
+    ? String(import.meta.env.VITE_WC_PROJECT_ID)
+    : '4af55f52f76fcaa0e6c8437277d3719a'
 export const EXPLORER_URL = import.meta.env.VITE_EXPLORER_URL || 'https://bscscan.com'
 
 export const BSC = {

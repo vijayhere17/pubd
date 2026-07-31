@@ -13,8 +13,7 @@ declare global {
 export function Landing() {
   const navigate = useNavigate()
   const {
-    connectMetaMask,
-    connectTrustWallet,
+    connectInjected,
     connectWalletConnect,
     connecting,
   } = useWallet()
@@ -57,9 +56,8 @@ export function Landing() {
         open={modalOpen}
         connecting={connecting}
         onClose={() => setModalOpen(false)}
-        onMetaMask={() => afterConnect(connectMetaMask)}
-        onTrustWallet={() => afterConnect(connectTrustWallet)}
         onWalletConnect={() => afterConnect(connectWalletConnect)}
+        onBrowserWallet={() => afterConnect(connectInjected)}
       />
     </>
   )
