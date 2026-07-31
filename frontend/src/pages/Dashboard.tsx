@@ -127,13 +127,17 @@ export function Dashboard() {
       <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-7">
         {/* Header */}
         <header className="dash-header mb-6 animate-fade-up">
-          <Link to="/dashboard" className="dash-logo-wrap" aria-label="PAB-D Dashboard">
+          <Link to="/dashboard" className="dash-brand" aria-label="PAB-D Dashboard">
             <img src="/pabd-logo.png" alt="PAB-D" className="dash-logo" />
+            <div className="dash-brand-copy">
+              <div className="dash-brand-title">PAB-D</div>
+              <div className="dash-brand-sub">Private Sale & Staking Portal</div>
+            </div>
           </Link>
 
-          <div className="flex flex-wrap items-center justify-end gap-2 md:gap-3">
+          <div className="dash-header-actions">
             <button onClick={handleCopy} className="dash-chip flex items-center gap-2">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#d9a94f]/15 text-[#f0d48a]">◈</span>
+              <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-[#d9a94f]/15 text-[#f0d48a]">◈</span>
               {short(address)}
             </button>
             <Link to="/history" className="dash-chip">History</Link>
@@ -146,7 +150,6 @@ export function Dashboard() {
             >
               Exit
             </button>
-            <button className="dash-bell" aria-label="Notifications">🔔</button>
           </div>
         </header>
 
