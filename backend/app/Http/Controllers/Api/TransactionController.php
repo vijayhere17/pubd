@@ -63,6 +63,8 @@ class TransactionController extends Controller
         $data = $request->validate([
             'amount' => ['nullable', 'numeric', 'gt:0'],
             'type' => ['nullable', 'string'],
+            'stake_id' => ['nullable', 'integer'],
+            'onchain_stake_id' => ['nullable', 'integer'],
             'tx_hash' => ['required', 'string'],
         ]);
 

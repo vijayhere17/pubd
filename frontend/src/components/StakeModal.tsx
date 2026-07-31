@@ -77,11 +77,12 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
       await approveTx.wait()
       const { staking } = getContracts(signer, { staking: staking_address })
       if (!staking) throw new Error('Staking contract missing')
-      const { hash } = await stakeTokens(staking, amount, lockDays)
+      const { hash, stakeId } = await stakeTokens(staking, amount, lockDays)
       const res = await recordStake({
         amount: n,
         lock_days: lockDays,
         apy: bonusPercent,
+        onchain_stake_id: stakeId ?? undefined,
         tx_hash: hash,
       })
       toast.push(`Staked! You will claim ${totalReturn.toLocaleString()} PAB-D after ${lockDays} days.`, 'success')

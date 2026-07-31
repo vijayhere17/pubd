@@ -47,6 +47,24 @@ export async function stakeTokens(staking: Contract, amount: string, lockDays: n
   const value = parseUnits(amount, decimals)
   const tx = await staking.stake(value, lockDays)
   const receipt = await tx.wait()
+  let stakeId: number | null = null
+  for (const log of receipt?.logs || []) {
+    try {
+      const parsed = staking.interface.parseLog(log)
+      if (parsed?.name === 'Staked') {
+        stakeId = Number(parsed.args.stakeId)
+        break
+      }
+    } catch {
+      // not this contract's log
+    }
+  }
+  return { hash: tx.hash as string, blockNumber: receipt?.blockNumber as number, stakeId }
+}
+
+export async function unstakeTokens(staking: Contract, stakeId: number) {
+  const tx = await staking.unstake(stakeId)
+  const receipt = await tx.wait()
   return { hash: tx.hash as string, blockNumber: receipt?.blockNumber as number }
 }
 
