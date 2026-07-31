@@ -69,6 +69,38 @@ body {
     linear-gradient(180deg, #050b18 0%, #071024 45%, #040914 100%);
 }
 
+.dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.dash-logo-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dash-logo {
+  height: 56px;
+  width: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  box-shadow: 0 0 0 2px rgba(217,169,79,0.28), 0 0 28px rgba(217,169,79,0.28);
+}
+
+@media (min-width: 768px) {
+  .dash-logo {
+    height: 64px;
+    width: 64px;
+  }
+}
+
 .dash-card {
   border-radius: 18px;
   border: 1px solid rgba(217,169,79,0.16);
@@ -190,44 +222,6 @@ body {
 .dash-btn-blue:hover {
   transform: translateY(-1px);
   filter: brightness(1.06);
-}
-
-.dash-bottom-nav {
-  position: fixed;
-  left: 50%;
-  bottom: 14px;
-  transform: translateX(-50%);
-  width: min(640px, calc(100% - 1.5rem));
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 0.25rem;
-  padding: 0.55rem 0.45rem;
-  border-radius: 18px;
-  border: 1px solid rgba(217,169,79,0.18);
-  background: rgba(7,14,30,0.92);
-  backdrop-filter: blur(16px);
-  box-shadow: 0 16px 40px rgba(0,0,0,0.45);
-  z-index: 40;
-}
-.dash-bottom-nav button {
-  border: 0;
-  background: transparent;
-  color: #7f8aa5;
-  font-size: 0.68rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.45rem 0.2rem;
-  border-radius: 12px;
-}
-.dash-bottom-nav button span {
-  font-size: 0.95rem;
-}
-.dash-bottom-nav button.active {
-  color: #f0d48a;
-  background: rgba(217,169,79,0.12);
-  box-shadow: inset 0 0 0 1px rgba(217,169,79,0.25);
 }
 
 @media (max-width: 640px) {

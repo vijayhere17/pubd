@@ -34,7 +34,6 @@ export function Dashboard() {
   const [stakeOpen, setStakeOpen] = useState(false)
   const [claiming, setClaiming] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [tab, setTab] = useState<'dashboard' | 'portfolio' | 'stake' | 'transactions' | 'settings'>('dashboard')
 
   const refresh = useCallback(async () => {
     const dash = await fetchDashboard()
@@ -124,19 +123,15 @@ export function Dashboard() {
   const priceInBnb = data.token_price / 600
 
   return (
-    <div className="dash-shell min-h-screen pb-28">
+    <div className="dash-shell min-h-screen">
       <div className="mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-7">
         {/* Header */}
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-4 animate-fade-up">
-          <div className="flex items-center gap-3">
-            <img src="/pabd-logo.png" alt="PAB-D" className="h-14 w-14 rounded-full object-cover shadow-[0_0_24px_rgba(217,169,79,0.35)]" />
-            <div>
-              <div className="text-lg font-bold tracking-[0.12em] text-[#f0d48a] md:text-xl">PAB-D DASHBOARD</div>
-              <p className="text-sm text-[#8b95ad]">Private sale & staking portal</p>
-            </div>
-          </div>
+        <header className="dash-header mb-6 animate-fade-up">
+          <Link to="/dashboard" className="dash-logo-wrap" aria-label="PAB-D Dashboard">
+            <img src="/pabd-logo.png" alt="PAB-D" className="dash-logo" />
+          </Link>
 
-          <div className="flex flex-wrap items-center gap-2 md:gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 md:gap-3">
             <button onClick={handleCopy} className="dash-chip flex items-center gap-2">
               <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#d9a94f]/15 text-[#f0d48a]">◈</span>
               {short(address)}
@@ -252,7 +247,7 @@ export function Dashboard() {
             <p className="mt-2 text-sm text-[#b9c2d6]">
               Stake your PAB-D tokens and earn attractive rewards.
             </p>
-            <button onClick={() => { setStakeOpen(true); setTab('stake') }} className="dash-btn-blue mt-5">
+            <button onClick={() => setStakeOpen(true)} className="dash-btn-blue mt-5">
               STAKE NOW →
             </button>
           </article>
@@ -315,25 +310,6 @@ export function Dashboard() {
           </article>
         </section>
       </div>
-
-      {/* Bottom nav */}
-      <nav className="dash-bottom-nav">
-        <button className={tab === 'dashboard' ? 'active' : ''} onClick={() => { setTab('dashboard'); window.scrollTo({ top: 0, behavior: 'smooth' }) }}>
-          <span>⌂</span>Dashboard
-        </button>
-        <button className={tab === 'portfolio' ? 'active' : ''} onClick={() => { setTab('portfolio'); document.getElementById('portfolio')?.scrollIntoView({ behavior: 'smooth' }) }}>
-          <span>◉</span>Portfolio
-        </button>
-        <button className={tab === 'stake' ? 'active' : ''} onClick={() => { setTab('stake'); setStakeOpen(true) }}>
-          <span>🔒</span>Stake
-        </button>
-        <button className={tab === 'transactions' ? 'active' : ''} onClick={() => navigate('/history')}>
-          <span>☰</span>Transactions
-        </button>
-        <button className={tab === 'settings' ? 'active' : ''} onClick={() => navigate(localStorage.getItem('pabd_is_admin') === '1' ? '/admin' : '/history')}>
-          <span>⚙</span>Settings
-        </button>
-      </nav>
 
       <BuyModal open={buyOpen} onClose={() => setBuyOpen(false)} dashboard={data} onSuccess={setData} />
       <StakeModal open={stakeOpen} onClose={() => setStakeOpen(false)} dashboard={data} onSuccess={setData} />
