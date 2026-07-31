@@ -34,7 +34,7 @@ export function BuyModal({ open, onClose, dashboard, onSuccess }: Props) {
       return
     }
     if (!settings.usdt_address || !settings.sale_address) {
-      toast.push('Open Admin → Settings and paste USDT + Sale contract addresses, then Save', 'error')
+      toast.push('First deploy contracts, then Admin → Settings → paste USDT + Sale + Token addresses and Save. You need PAB-D from Buy before Stake.', 'error')
       return
     }
     setLoading(true)

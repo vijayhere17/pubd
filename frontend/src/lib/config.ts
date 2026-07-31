@@ -7,6 +7,15 @@ export const WC_PROJECT_ID =
     : '4af55f52f76fcaa0e6c8437277d3719a'
 export const EXPLORER_URL = import.meta.env.VITE_EXPLORER_URL || 'https://bscscan.com'
 
+// Official BEP-20 USDT on BSC mainnet (used when Admin has not set custom USDT yet)
+export const BSC_USDT_ADDRESS = '0x55d398326f99059fF775485246999027B3197955'
+export const BSC_TESTNET_USDT_ADDRESS = '0x337610d27c682E347C9cD60BD4b3b107C9d34dDd'
+
+export function defaultUsdtAddress(chainId = CHAIN_ID): string {
+  if (import.meta.env.VITE_USDT_ADDRESS) return String(import.meta.env.VITE_USDT_ADDRESS)
+  return chainId === 97 ? BSC_TESTNET_USDT_ADDRESS : BSC_USDT_ADDRESS
+}
+
 export const BSC = {
   chainId: CHAIN_ID,
   chainIdHex: `0x${CHAIN_ID.toString(16)}`,

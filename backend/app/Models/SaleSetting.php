@@ -54,7 +54,7 @@ class SaleSetting extends Model
             'chain_id' => (int) env('PABD_CHAIN_ID', 56),
             'explorer_url' => env('PABD_EXPLORER_URL', 'https://bscscan.com'),
             'stake_apy_default' => 12,
-            'usdt_address' => env('PABD_USDT_ADDRESS'),
+            'usdt_address' => env('PABD_USDT_ADDRESS', '0x55d398326f99059fF775485246999027B3197955'),
             'token_address' => env('PABD_TOKEN_ADDRESS'),
             'sale_address' => env('PABD_SALE_ADDRESS'),
             'staking_address' => env('PABD_STAKING_ADDRESS'),
@@ -85,6 +85,11 @@ class SaleSetting extends Model
             'vesting_address' => env('PABD_VESTING_ADDRESS'),
             'treasury_wallet' => env('PABD_TREASURY_WALLET'),
         ]);
+
+                // BSC USDT default so balances work before custom admin config.
+        if (empty($settings->usdt_address)) {
+            $settings->usdt_address = '0x55d398326f99059fF775485246999027B3197955';
+        }
 
         foreach ($fromEnv as $key => $value) {
             if (empty($settings->{$key}) && ! empty($value)) {

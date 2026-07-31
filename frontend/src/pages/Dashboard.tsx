@@ -6,6 +6,7 @@ import { useWallet } from '../hooks/useWallet'
 import { claimVested, getContracts, readTokenBalance } from '../lib/contracts'
 import { fetchDashboard, recordClaim, type DashboardData } from '../lib/api'
 import { useToast } from '../store/toast'
+import { defaultUsdtAddress } from '../lib/config'
 
 function short(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`
@@ -59,8 +60,9 @@ export function Dashboard() {
       if (!provider || !address || !data) return
       try {
         const bnbWei = await provider.getBalance(address)
+        const usdtAddress = data.settings.usdt_address || defaultUsdtAddress(data.settings.chain_id || 56)
         const { usdt, token } = getContracts(provider, {
-          usdt: data.settings.usdt_address,
+          usdt: usdtAddress,
           token: data.settings.token_address,
         })
         const [usdtBal, pabdBal] = await Promise.all([
