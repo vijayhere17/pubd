@@ -12,14 +12,12 @@ declare global {
 
 export function Landing() {
   const navigate = useNavigate()
-  const { connectMetaMask, connectWalletConnect, connecting, address } = useWallet()
+  const {
+    connectInjected,
+    connectWalletConnect,
+    connecting,
+  } = useWallet()
   const [modalOpen, setModalOpen] = useState(false)
-
-  useEffect(() => {
-    if (address && localStorage.getItem('pabd_token')) {
-      // Already authenticated sessions can jump straight to dashboard from landing connect
-    }
-  }, [address])
 
   useEffect(() => {
     const runConnect = async () => {
@@ -58,8 +56,8 @@ export function Landing() {
         open={modalOpen}
         connecting={connecting}
         onClose={() => setModalOpen(false)}
-        onMetaMask={() => afterConnect(connectMetaMask)}
         onWalletConnect={() => afterConnect(connectWalletConnect)}
+        onBrowserWallet={() => afterConnect(connectInjected)}
       />
     </>
   )

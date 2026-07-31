@@ -69,19 +69,26 @@ class TransactionService
 
         $amount = (float) $data['amount'];
         $lockDays = (int) $data['lock_days'];
+        $minStake = 5000; // 5000 PAB-D = $500 at $0.10
+        if ($amount < $minStake) {
+            throw ValidationException::withMessages([
+                'amount' => 'Minimum stake is 5000 PAB-D ($500 at current $0.10 price).',
+            ]);
+        }
         $periods = collect($settings->lock_periods ?? []);
         $period = $periods->firstWhere('days', $lockDays);
-        $apy = (float) ($data['apy'] ?? ($period['apy'] ?? $settings->stake_apy_default));
-        $estimated = round($amount * ($apy / 100) * ($lockDays / 365), 8);
+        $bonusPercent = (float) ($data['apy'] ?? ($period['percent'] ?? $period['apy'] ?? 8));
+        // Flat period bonus: stake 5000 for 100 days at 8% => reward 400 (total 5400)
+        $estimated = round($amount * ($bonusPercent / 100), 8);
 
-        return DB::transaction(function () use ($user, $data, $txHash, $amount, $lockDays, $apy, $estimated, $settings) {
+        return DB::transaction(function () use ($user, $data, $txHash, $amount, $lockDays, $bonusPercent, $estimated, $settings) {
             $stake = Stake::query()->create([
                 'user_id' => $user->id,
                 'wallet_address' => $user->wallet_address,
                 'onchain_stake_id' => $data['onchain_stake_id'] ?? null,
                 'amount' => $amount,
                 'lock_days' => $lockDays,
-                'apy' => $apy,
+                'apy' => $bonusPercent,
                 'estimated_reward' => $estimated,
                 'tx_hash' => $txHash,
                 'status' => 'active',
@@ -91,7 +98,8 @@ class TransactionService
 
             $this->logWalletTx($user, 'stake', $amount, 'PAB-D', $txHash, $settings, [
                 'lock_days' => $lockDays,
-                'apy' => $apy,
+                'bonus_percent' => $bonusPercent,
+                'total_return' => $amount + $estimated,
             ]);
 
             BlockchainLog::query()->create([

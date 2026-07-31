@@ -7,12 +7,8 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-interface IVestingVault {
-    function createVesting(address beneficiary, uint256 amount) external;
-}
-
 /// @title PAB-D Private Sale
-/// @notice Buy PAB-D with USDT at a configurable price; tokens vest via VestingVault
+/// @notice Buy PAB-D with USDT; tokens are delivered instantly to buyer wallet
 contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -20,7 +16,6 @@ contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
 
     IERC20 public immutable usdt;
     IERC20 public immutable pabd;
-    IVestingVault public vestingVault;
     address public treasury;
 
     /// @dev Price of 1 PAB-D in USDT smallest units (USDT has 18 decimals on BSC)
@@ -33,7 +28,6 @@ contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
     uint256 public totalRaised;
 
     mapping(address => uint256) public purchasedOf;
-    mapping(bytes32 => bool) public processedTx;
 
     event TokensPurchased(
         address indexed buyer,
@@ -50,14 +44,12 @@ contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
         uint256 saleEnd
     );
     event TreasuryUpdated(address treasury);
-    event VestingVaultUpdated(address vestingVault);
 
     constructor(
         address admin,
         address usdt_,
         address pabd_,
         address treasury_,
-        address vestingVault_,
         uint256 tokenPriceUsdt_,
         uint256 minBuyUsdt_,
         uint256 maxBuyUsdt_,
@@ -65,14 +57,13 @@ contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
         uint256 saleEnd_
     ) {
         require(admin != address(0) && usdt_ != address(0) && pabd_ != address(0), "Sale: zero");
-        require(treasury_ != address(0) && vestingVault_ != address(0), "Sale: zero treasury/vault");
+        require(treasury_ != address(0), "Sale: zero treasury");
         require(tokenPriceUsdt_ > 0, "Sale: price");
         require(saleEnd_ > saleStart_, "Sale: window");
 
         usdt = IERC20(usdt_);
         pabd = IERC20(pabd_);
         treasury = treasury_;
-        vestingVault = IVestingVault(vestingVault_);
         tokenPriceUsdt = tokenPriceUsdt_;
         minBuyUsdt = minBuyUsdt_;
         maxBuyUsdt = maxBuyUsdt_;
@@ -88,6 +79,7 @@ contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
         tokenAmount = (usdtAmount * 1 ether) / tokenPriceUsdt;
     }
 
+    /// @notice Pay USDT and receive PAB-D instantly in buyer wallet
     function buy(uint256 usdtAmount) external nonReentrant whenNotPaused {
         require(block.timestamp >= saleStart && block.timestamp <= saleEnd, "Sale: inactive");
         require(usdtAmount >= minBuyUsdt, "Sale: below min");
@@ -98,8 +90,7 @@ contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
         require(pabd.balanceOf(address(this)) >= tokenAmount, "Sale: inventory");
 
         usdt.safeTransferFrom(msg.sender, treasury, usdtAmount);
-        pabd.safeTransfer(address(vestingVault), tokenAmount);
-        vestingVault.createVesting(msg.sender, tokenAmount);
+        pabd.safeTransfer(msg.sender, tokenAmount);
 
         purchasedOf[msg.sender] += tokenAmount;
         totalSold += tokenAmount;
@@ -130,12 +121,6 @@ contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
         require(treasury_ != address(0), "Sale: zero");
         treasury = treasury_;
         emit TreasuryUpdated(treasury_);
-    }
-
-    function setVestingVault(address vestingVault_) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(vestingVault_ != address(0), "Sale: zero");
-        vestingVault = IVestingVault(vestingVault_);
-        emit VestingVaultUpdated(vestingVault_);
     }
 
     function pause() external onlyRole(OPERATOR_ROLE) {

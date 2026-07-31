@@ -13,11 +13,23 @@ import { BSC, CHAIN_ID, WC_PROJECT_ID } from '../lib/config'
 import { fetchNonce, walletLogin } from '../lib/api'
 import { useToast } from '../store/toast'
 
+type InjectedProvider = Eip1193Provider & {
+  isMetaMask?: boolean
+  isTrust?: boolean
+  isTrustWallet?: boolean
+  providers?: InjectedProvider[]
+  on?: (e: string, cb: (...args: unknown[]) => void) => void
+  removeListener?: (e: string, cb: (...args: unknown[]) => void) => void
+}
+
 type WalletContextValue = {
   address: string | null
   provider: BrowserProvider | null
   connecting: boolean
+  restoring: boolean
   connectMetaMask: () => Promise<string>
+  connectTrustWallet: () => Promise<string>
+  connectInjected: () => Promise<string>
   connectWalletConnect: () => Promise<string>
   disconnect: () => void
   ensureBsc: () => Promise<void>
@@ -25,6 +37,32 @@ type WalletContextValue = {
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null)
+
+function getWindowEthereum(): InjectedProvider | undefined {
+  return (window as unknown as { ethereum?: InjectedProvider }).ethereum
+}
+
+function pickInjectedProvider(prefer: 'metamask' | 'trust' | 'any' = 'any'): InjectedProvider | null {
+  const ethereum = getWindowEthereum()
+  if (!ethereum) return null
+
+  const list = ethereum.providers?.length ? ethereum.providers : [ethereum]
+
+  if (prefer === 'metamask') {
+    return list.find((p) => p.isMetaMask && !p.isTrust && !p.isTrustWallet) || list.find((p) => p.isMetaMask) || null
+  }
+
+  if (prefer === 'trust') {
+    return list.find((p) => p.isTrust || p.isTrustWallet) || null
+  }
+
+  return (
+    list.find((p) => p.isTrust || p.isTrustWallet) ||
+    list.find((p) => p.isMetaMask) ||
+    list[0] ||
+    null
+  )
+}
 
 async function switchToBsc(eip1193: Eip1193Provider) {
   try {
@@ -60,7 +98,6 @@ async function authenticate(address: string, eip1193: Eip1193Provider) {
     }) as string
     await walletLogin(address, signature, nonce)
   } catch {
-    // Fallback auto-login if user rejects sign or API signature path fails
     await walletLogin(address)
   }
 }
@@ -69,6 +106,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(localStorage.getItem('pabd_wallet'))
   const [rawProvider, setRawProvider] = useState<Eip1193Provider | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [restoring, setRestoring] = useState(true)
   const toast = useToast()
 
   const provider = useMemo(
@@ -87,13 +125,57 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     return account.toLowerCase()
   }, [])
 
-  const connectMetaMask = useCallback(async () => {
+  // Keep session alive on refresh: reattach injected provider without forcing a new popup when possible.
+  useEffect(() => {
+    let cancelled = false
+    async function restoreSession() {
+      const savedWallet = localStorage.getItem('pabd_wallet')
+      const savedToken = localStorage.getItem('pabd_token')
+      if (!savedWallet || !savedToken) {
+        if (!cancelled) setRestoring(false)
+        return
+      }
+      const injected = pickInjectedProvider('any')
+      if (!injected) {
+        if (!cancelled) setRestoring(false)
+        return
+      }
+      try {
+        const accounts = await injected.request({ method: 'eth_accounts' }) as string[]
+        const current = accounts[0]?.toLowerCase()
+        if (!current) {
+          if (!cancelled) setRestoring(false)
+          return
+        }
+        await switchToBsc(injected).catch(() => undefined)
+        if (cancelled) return
+        setRawProvider(injected)
+        setAddress(current)
+        localStorage.setItem('pabd_wallet', current)
+        // Re-login quietly if wallet changed or token may be stale
+        if (current !== savedWallet.toLowerCase() || !savedToken) {
+          await authenticate(current, injected)
+        }
+      } catch {
+        // leave user on connect screen if restore fails
+      } finally {
+        if (!cancelled) setRestoring(false)
+      }
+    }
+    restoreSession()
+    return () => { cancelled = true }
+  }, [])
+
+  const connectWithProvider = useCallback(async (
+    eip1193: Eip1193Provider | null,
+    missingMessage: string,
+    successMessage: string,
+  ) => {
     setConnecting(true)
     try {
-      const ethereum = (window as unknown as { ethereum?: Eip1193Provider }).ethereum
-      if (!ethereum) throw new Error('MetaMask not found. Install MetaMask or use WalletConnect.')
-      const addr = await finishConnect(ethereum)
-      toast.push('Wallet connected successfully', 'success')
+      if (!eip1193) throw new Error(missingMessage)
+      const addr = await finishConnect(eip1193)
+      toast.push(successMessage, 'success')
       return addr
     } catch (e: unknown) {
       const msg = (e as { message?: string; code?: number })?.code === 4001
@@ -106,43 +188,73 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   }, [finishConnect, toast])
 
-  const connectWalletConnect = useCallback(async () => {
+  const connectWalletConnect = useCallback(async (label = 'Wallet') => {
     setConnecting(true)
     try {
-      if (!WC_PROJECT_ID || WC_PROJECT_ID === 'pabd_demo_project_id') {
-        // Graceful fallback to injected provider when WC project id is not configured
-        return connectMetaMask()
+      if (!WC_PROJECT_ID) {
+        throw new Error('WalletConnect Project ID missing.')
       }
+
       const wc = await EthereumProvider.init({
         projectId: WC_PROJECT_ID,
+        optionalChains: [CHAIN_ID, 56, 97],
         chains: [CHAIN_ID],
         showQrModal: true,
-        methods: ['eth_sendTransaction', 'personal_sign', 'eth_signTypedData_v4'],
+        methods: ['eth_sendTransaction', 'personal_sign', 'eth_signTypedData_v4', 'eth_sign'],
         events: ['chainChanged', 'accountsChanged'],
         metadata: {
           name: 'PAB-D',
           description: 'PAB-D Private Sale & Staking',
-          url: window.location.origin,
-          icons: [`${window.location.origin}/vite.svg`],
+          url: typeof window !== 'undefined' ? window.location.origin : 'https://pabd.finance',
+          icons: [typeof window !== 'undefined' ? `${window.location.origin}/pabd-logo.png` : ''],
+        },
+        qrModalOptions: {
+          themeMode: 'dark',
         },
       })
+
       await wc.enable()
       const addr = await finishConnect(wc as unknown as Eip1193Provider)
-      toast.push('Wallet connected via WalletConnect', 'success')
+      toast.push(`${label} connected`, 'success')
       return addr
     } catch (e: unknown) {
-      toast.push((e as Error).message || 'WalletConnect failed', 'error')
+      toast.push((e as Error).message || 'Wallet connection failed', 'error')
       throw e
     } finally {
       setConnecting(false)
     }
-  }, [connectMetaMask, finishConnect, toast])
+  }, [finishConnect, toast])
+
+  const connectMetaMask = useCallback(async () => {
+    return connectWithProvider(
+      pickInjectedProvider('metamask'),
+      'MetaMask not found. Install MetaMask or use WalletConnect / Trust Wallet.',
+      'MetaMask connected',
+    )
+  }, [connectWithProvider])
+
+  const connectTrustWallet = useCallback(async () => {
+    const injectedTrust = pickInjectedProvider('trust')
+    if (injectedTrust) {
+      return connectWithProvider(injectedTrust, 'Trust Wallet not found', 'Trust Wallet connected')
+    }
+    return connectWalletConnect('Trust Wallet')
+  }, [connectWithProvider, connectWalletConnect])
+
+  const connectInjected = useCallback(async () => {
+    return connectWithProvider(
+      pickInjectedProvider('any'),
+      'No browser wallet found. Install MetaMask/Trust Wallet or use WalletConnect.',
+      'Wallet connected',
+    )
+  }, [connectWithProvider])
 
   const disconnect = useCallback(() => {
     setAddress(null)
     setRawProvider(null)
     localStorage.removeItem('pabd_token')
     localStorage.removeItem('pabd_wallet')
+    localStorage.removeItem('pabd_is_admin')
   }, [])
 
   const ensureBsc = useCallback(async () => {
@@ -157,10 +269,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   }, [provider, ensureBsc])
 
   useEffect(() => {
-    const ethereum = (window as unknown as { ethereum?: Eip1193Provider & {
-      on?: (e: string, cb: (...args: unknown[]) => void) => void
-      removeListener?: (e: string, cb: (...args: unknown[]) => void) => void
-    } }).ethereum
+    const ethereum = getWindowEthereum()
     if (!ethereum?.on) return
     const onAccounts = (...args: unknown[]) => {
       const accounts = args[0] as string[]
@@ -175,12 +284,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     address,
     provider,
     connecting,
+    restoring,
     connectMetaMask,
+    connectTrustWallet,
+    connectInjected,
+    connectWalletConnect: () => connectWalletConnect('WalletConnect'),
+    disconnect,
+    ensureBsc,
+    getSigner,
+  }), [
+    address,
+    provider,
+    connecting,
+    restoring,
+    connectMetaMask,
+    connectTrustWallet,
+    connectInjected,
     connectWalletConnect,
     disconnect,
     ensureBsc,
     getSigner,
-  }), [address, provider, connecting, connectMetaMask, connectWalletConnect, disconnect, ensureBsc, getSigner])
+  ])
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>
 }

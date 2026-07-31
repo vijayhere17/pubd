@@ -27,6 +27,7 @@ class DashboardController extends Controller
             'sale_end' => $settings->sale_end,
             'min_buy' => (float) $settings->min_buy,
             'max_buy' => (float) $settings->max_buy,
+            'min_stake' => 5000,
             'usdt_address' => $settings->usdt_address,
             'token_address' => $settings->token_address,
             'sale_address' => $settings->sale_address,

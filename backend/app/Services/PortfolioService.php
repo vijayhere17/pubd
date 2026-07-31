@@ -22,7 +22,6 @@ class PortfolioService
             ->get();
 
         $totalPurchased = (float) $purchases->sum('token_amount');
-        $firstPurchaseAt = $purchases->min('purchased_at') ?? $purchases->min('created_at');
 
         $stakes = Stake::query()
             ->where('user_id', $user->id)
@@ -37,14 +36,7 @@ class PortfolioService
             ->where('status', 'confirmed')
             ->sum('amount');
 
-        $vesting = $this->computeVesting(
-            $totalPurchased,
-            $totalClaimed,
-            $firstPurchaseAt ? Carbon::parse($firstPurchaseAt) : null,
-            $settings->vesting_schedule ?? []
-        );
-
-        // Stakeable allocation follows purchased inventory minus active stakes (matches product flow).
+        // Instant delivery model: purchased tokens are available immediately for staking.
         $available = max(0, $totalPurchased - $totalStaked);
 
         return [
@@ -53,15 +45,16 @@ class PortfolioService
             'total_purchased' => $totalPurchased,
             'total_staked' => $totalStaked,
             'available_tokens' => $available,
-            'locked_tokens' => $vesting['locked'],
-            'unlocked_tokens' => $vesting['unlocked'],
-            'claimable_tokens' => $vesting['claimable'],
+            'locked_tokens' => $totalStaked, // actively staked/locked in staking
+            'unlocked_tokens' => $available,
+            'claimable_tokens' => 0,
             'total_claimed' => $totalClaimed,
             'portfolio_value' => round($totalPurchased * $price, 4),
             'estimated_rewards' => $estimatedRewards,
-            'next_unlock_date' => $vesting['next_unlock_date'],
-            'next_unlock_percent' => $vesting['next_unlock_percent'],
-            'vesting_progress' => $vesting['progress'],
+            'next_unlock_date' => optional($stakes->sortBy('ends_at')->first())->ends_at,
+            'next_unlock_percent' => null,
+            'vesting_progress' => $totalPurchased > 0 ? 100 : 0,
+            'delivery_mode' => 'instant',
             'active_stakes' => $stakes->count(),
             'settings' => [
                 'sale_active' => $settings->sale_active,
@@ -77,6 +70,7 @@ class PortfolioService
                 'explorer_url' => $settings->explorer_url,
                 'lock_periods' => $settings->lock_periods,
                 'vesting_schedule' => $settings->vesting_schedule,
+                'min_stake' => 5000,
             ],
         ];
     }

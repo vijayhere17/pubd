@@ -5,14 +5,12 @@ import {Test} from "forge-std/Test.sol";
 import {PABDToken} from "../src/PABDToken.sol";
 import {PrivateSale} from "../src/PrivateSale.sol";
 import {Staking} from "../src/Staking.sol";
-import {VestingVault} from "../src/Vesting.sol";
 import {MockUSDT} from "../src/mocks/MockUSDT.sol";
 
 contract PABDTest is Test {
     PABDToken token;
     PrivateSale sale;
     Staking staking;
-    VestingVault vesting;
     MockUSDT usdt;
 
     address admin = address(0xA11CE);
@@ -23,56 +21,71 @@ contract PABDTest is Test {
         vm.startPrank(admin);
         usdt = new MockUSDT();
         token = new PABDToken(admin, admin);
-        vesting = new VestingVault(admin, address(token));
         staking = new Staking(admin, address(token));
         sale = new PrivateSale(
             admin,
             address(usdt),
             address(token),
             treasury,
-            address(vesting),
             0.1 ether,
             10 ether,
             100_000 ether,
             block.timestamp,
             block.timestamp + 30 days
         );
-        vesting.grantRole(vesting.SALE_ROLE(), address(sale));
         token.transfer(address(sale), 10_000_000 ether);
-        token.approve(address(staking), 1_000_000 ether);
-        staking.fundRewards(1_000_000 ether);
+        token.approve(address(staking), 5_000_000 ether);
+        staking.fundRewards(5_000_000 ether);
         usdt.transfer(buyer, 10_000 ether);
-        token.transfer(buyer, 50_000 ether);
         vm.stopPrank();
     }
 
-    function testBuyAndVestClaim() public {
+    function testBuySendsTokensInstantlyToWallet() public {
+        uint256 beforeBal = token.balanceOf(buyer);
+
         vm.startPrank(buyer);
         usdt.approve(address(sale), 100 ether);
         sale.buy(100 ether);
         vm.stopPrank();
 
         assertEq(sale.purchasedOf(buyer), 1000 ether);
-        assertEq(vesting.claimable(buyer), 0);
-
-        vm.warp(block.timestamp + 100 days);
-        assertEq(vesting.claimable(buyer), 80 ether); // 8%
-
-        vm.prank(buyer);
-        vesting.claim();
-        assertEq(token.balanceOf(buyer), 50_000 ether + 80 ether);
+        assertEq(token.balanceOf(buyer), beforeBal + 1000 ether);
     }
 
-    function testStakeAndUnstake() public {
+    function testStakeFlatBonusClaimAfterLock() public {
+        // Min stake is 5000 PAB-D => buy 500 USDT at $0.10
         vm.startPrank(buyer);
-        token.approve(address(staking), 1000 ether);
-        staking.stake(1000 ether, 100);
-        uint256 stakeId = 1;
-        assertEq(staking.totalStakedOf(buyer), 1000 ether);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether); // 5000 PAB-D
+
+        token.approve(address(staking), 5000 ether);
+        staking.stake(5000 ether, 100);
+
+        (uint256 principal, uint256 reward, uint256 total, bool claimable) = staking.previewTotal(1);
+        assertEq(principal, 5000 ether);
+        assertEq(reward, 400 ether); // 8% of 5000
+        assertEq(total, 5400 ether);
+        assertEq(claimable, false);
+        assertEq(staking.pendingRewards(1), 0);
+
+        vm.expectRevert("Stake: locked");
+        staking.unstake(1);
 
         vm.warp(block.timestamp + 100 days);
-        staking.unstake(stakeId);
-        assertEq(staking.totalStakedOf(buyer), 0);
+        assertEq(staking.pendingRewards(1), 400 ether);
+
+        staking.unstake(1);
+        assertEq(token.balanceOf(buyer), 5400 ether);
+        vm.stopPrank();
+    }
+
+    function testStakeRejectsBelowMinimum() public {
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 100 ether);
+        sale.buy(100 ether); // 1000 PAB-D < 5000 min
+        token.approve(address(staking), 1000 ether);
+        vm.expectRevert("Stake: min 5000");
+        staking.stake(1000 ether, 100);
         vm.stopPrank();
     }
 

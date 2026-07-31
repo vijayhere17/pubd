@@ -28,6 +28,7 @@ contract DeployScript is Script {
         }
 
         PABDToken token = new PABDToken(admin, admin);
+        // Vesting kept available for future allocations; private sale delivers instantly.
         VestingVault vesting = new VestingVault(admin, address(token));
         Staking staking = new Staking(admin, address(token));
         PrivateSale sale = new PrivateSale(
@@ -35,7 +36,6 @@ contract DeployScript is Script {
             usdtAddr,
             address(token),
             treasury,
-            address(vesting),
             price,
             minBuy,
             maxBuy,
@@ -43,9 +43,7 @@ contract DeployScript is Script {
             saleEnd
         );
 
-        vesting.grantRole(vesting.SALE_ROLE(), address(sale));
-
-        // Seed sale inventory (60% of supply for private sale vesting pool example)
+        // Seed sale inventory for instant buyer delivery
         uint256 saleAllocation = 1_000_000_000 ether;
         token.transfer(address(sale), saleAllocation);
 
