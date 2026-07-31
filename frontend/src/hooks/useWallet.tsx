@@ -26,6 +26,7 @@ type WalletContextValue = {
   address: string | null
   provider: BrowserProvider | null
   connecting: boolean
+  restoring: boolean
   connectMetaMask: () => Promise<string>
   connectTrustWallet: () => Promise<string>
   connectInjected: () => Promise<string>
@@ -105,6 +106,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(localStorage.getItem('pabd_wallet'))
   const [rawProvider, setRawProvider] = useState<Eip1193Provider | null>(null)
   const [connecting, setConnecting] = useState(false)
+  const [restoring, setRestoring] = useState(true)
   const toast = useToast()
 
   const provider = useMemo(
@@ -121,6 +123,47 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     setAddress(account.toLowerCase())
     await authenticate(account.toLowerCase(), eip1193)
     return account.toLowerCase()
+  }, [])
+
+  // Keep session alive on refresh: reattach injected provider without forcing a new popup when possible.
+  useEffect(() => {
+    let cancelled = false
+    async function restoreSession() {
+      const savedWallet = localStorage.getItem('pabd_wallet')
+      const savedToken = localStorage.getItem('pabd_token')
+      if (!savedWallet || !savedToken) {
+        if (!cancelled) setRestoring(false)
+        return
+      }
+      const injected = pickInjectedProvider('any')
+      if (!injected) {
+        if (!cancelled) setRestoring(false)
+        return
+      }
+      try {
+        const accounts = await injected.request({ method: 'eth_accounts' }) as string[]
+        const current = accounts[0]?.toLowerCase()
+        if (!current) {
+          if (!cancelled) setRestoring(false)
+          return
+        }
+        await switchToBsc(injected).catch(() => undefined)
+        if (cancelled) return
+        setRawProvider(injected)
+        setAddress(current)
+        localStorage.setItem('pabd_wallet', current)
+        // Re-login quietly if wallet changed or token may be stale
+        if (current !== savedWallet.toLowerCase() || !savedToken) {
+          await authenticate(current, injected)
+        }
+      } catch {
+        // leave user on connect screen if restore fails
+      } finally {
+        if (!cancelled) setRestoring(false)
+      }
+    }
+    restoreSession()
+    return () => { cancelled = true }
   }, [])
 
   const connectWithProvider = useCallback(async (
@@ -241,6 +284,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     address,
     provider,
     connecting,
+    restoring,
     connectMetaMask,
     connectTrustWallet,
     connectInjected,
@@ -252,6 +296,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     address,
     provider,
     connecting,
+    restoring,
     connectMetaMask,
     connectTrustWallet,
     connectInjected,

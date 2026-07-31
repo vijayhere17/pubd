@@ -12,6 +12,8 @@ type Props = {
   open: boolean
   onClose: () => void
   dashboard: DashboardData
+  /** On-chain wallet PAB-D balance (source of truth for staking) */
+  walletPabd: number
   onSuccess: (next: DashboardData) => void
 }
 
@@ -26,20 +28,20 @@ const PPT_PERIODS: LockPeriod[] = [
 
 function periodPercent(p?: LockPeriod) {
   if (!p) return 0
-  // Prefer PPT mapping by days if API still has old apy values
   const ppt = PPT_PERIODS.find((x) => x.days === p.days)
   if (ppt) return ppt.percent!
   return Number(p.percent ?? p.apy ?? 0)
 }
 
-export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
+export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: Props) {
   const { getSigner, ensureBsc } = useWallet()
   const toast = useToast()
   const periods = PPT_PERIODS
   const [amount, setAmount] = useState('')
   const [lockDays, setLockDays] = useState(100)
   const [loading, setLoading] = useState(false)
-  const available = dashboard.available_tokens
+  // Stake from wallet balance (on-chain), not Laravel purchase ledger
+  const available = Math.max(0, Number(walletPabd) || 0)
   const minStake = Number(dashboard.settings.min_stake ?? 5000)
   const selected = periods.find((p) => p.days === lockDays)
   const bonusPercent = periodPercent(selected)
@@ -53,11 +55,11 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
   async function handleStake() {
     const n = Number(amount)
     if (!n || n > available) {
-      toast.push('Enter an amount within your available PAB-D balance', 'error')
+      toast.push('Enter an amount within your wallet PAB-D balance', 'error')
       return
     }
     if (n < minStake) {
-      toast.push(`Minimum stake is ${minStake.toLocaleString()} PAB-D. Buy enough PAB-D first.`, 'error')
+      toast.push(`Minimum stake is ${minStake.toLocaleString()} PAB-D.`, 'error')
       return
     }
     const { token_address, staking_address } = dashboard.settings
@@ -100,7 +102,7 @@ export function StakeModal({ open, onClose, dashboard, onSuccess }: Props) {
           <button onClick={onClose} className="text-[#7c879f]">✕</button>
         </div>
         <p className="mb-1 text-[#b9c2d6]">Staking is in <b className="text-[#f0d48a]">PAB-D</b> only.</p>
-        <p className="mb-1 text-sm text-[#7c879f]">Available: {available.toLocaleString()} PAB-D</p>
+        <p className="mb-1 text-sm text-[#7c879f]">Wallet balance: {available.toLocaleString()} PAB-D</p>
         <p className="mb-5 text-sm text-[#f0d48a]">Minimum stake: {minStake.toLocaleString()} PAB-D</p>
 
         <label className="mb-2 block text-sm text-[#7c879f]">Stake Amount (PAB-D)</label>

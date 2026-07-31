@@ -26,7 +26,7 @@ async function copyText(text: string) {
 
 export function Dashboard() {
   const navigate = useNavigate()
-  const { address, disconnect, provider } = useWallet()
+  const { address, disconnect, provider, restoring } = useWallet()
   const toast = useToast()
   const [data, setData] = useState<DashboardData | null>(null)
   const [balances, setBalances] = useState({ bnb: 0, usdt: 0, pabd: 0 })
@@ -34,6 +34,7 @@ export function Dashboard() {
   const [buyOpen, setBuyOpen] = useState(false)
   const [stakeOpen, setStakeOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [balanceTick, setBalanceTick] = useState(0)
 
   const refresh = useCallback(async () => {
     const dash = await fetchDashboard()
@@ -41,7 +42,32 @@ export function Dashboard() {
     return dash
   }, [])
 
+  const reloadBalances = useCallback(async (dash?: DashboardData | null) => {
+    const settings = dash?.settings ?? data?.settings
+    if (!provider || !address || !settings) return
+    try {
+      const bnbWei = await provider.getBalance(address)
+      const usdtAddress = settings.usdt_address || defaultUsdtAddress(settings.chain_id || 56)
+      const { usdt, token } = getContracts(provider, {
+        usdt: usdtAddress,
+        token: settings.token_address,
+      })
+      const [usdtBal, pabdBal] = await Promise.all([
+        readTokenBalance(usdt, address),
+        readTokenBalance(token, address),
+      ])
+      setBalances({
+        bnb: Number(bnbWei) / 1e18,
+        usdt: usdtBal,
+        pabd: pabdBal,
+      })
+    } catch {
+      // balances optional until contracts configured
+    }
+  }, [provider, address, data])
+
   useEffect(() => {
+    if (restoring) return
     if (!address || !localStorage.getItem('pabd_token')) {
       navigate('/')
       return
@@ -52,33 +78,20 @@ export function Dashboard() {
         navigate('/')
       })
       .finally(() => setLoading(false))
-  }, [address, navigate, refresh, toast])
+  }, [address, restoring, navigate, refresh, toast])
 
   useEffect(() => {
-    async function loadBalances() {
-      if (!provider || !address || !data) return
-      try {
-        const bnbWei = await provider.getBalance(address)
-        const usdtAddress = data.settings.usdt_address || defaultUsdtAddress(data.settings.chain_id || 56)
-        const { usdt, token } = getContracts(provider, {
-          usdt: usdtAddress,
-          token: data.settings.token_address,
-        })
-        const [usdtBal, pabdBal] = await Promise.all([
-          readTokenBalance(usdt, address),
-          readTokenBalance(token, address),
-        ])
-        setBalances({
-          bnb: Number(bnbWei) / 1e18,
-          usdt: usdtBal,
-          pabd: pabdBal,
-        })
-      } catch {
-        // balances optional until contracts configured
-      }
-    }
-    loadBalances()
-  }, [provider, address, data])
+    reloadBalances(data)
+  }, [provider, address, data, balanceTick, reloadBalances])
+
+  async function handleTradeSuccess(next: DashboardData) {
+    setData(next)
+    setBalanceTick((t) => t + 1)
+    // small delay so RPC can catch the new block
+    setTimeout(() => {
+      reloadBalances(next)
+    }, 1500)
+  }
 
   async function handleCopy() {
     if (!address) return
@@ -88,13 +101,16 @@ export function Dashboard() {
     setTimeout(() => setCopied(false), 1500)
   }
 
-  if (loading || !data || !address) {
+  if (restoring || loading || !data || !address) {
     return (
       <div className="dash-shell flex min-h-screen items-center justify-center">
         <div className="dash-card animate-glow px-8 py-6 text-[#b9c2d6]">Loading dashboard…</div>
       </div>
     )
   }
+
+  // Stake from wallet PAB-D (on-chain). Portfolio "purchased" is app history only.
+  const stakeable = balances.pabd
 
   const bnbUsd = balances.bnb * 600
   const pabdUsd = balances.pabd * data.token_price
@@ -242,9 +258,9 @@ export function Dashboard() {
               {[
                 ['Total Purchased', `${fmt(data.total_purchased)} PAB-D`],
                 ['Total Staked', `${fmt(data.total_staked)} PAB-D`],
-                ['Available to Stake', `${fmt(data.available_tokens)} PAB-D`],
+                ['Available to Stake', `${fmt(stakeable)} PAB-D`],
                 ['Locked in Staking', `${fmt(data.locked_tokens)} PAB-D`],
-                ['Portfolio Value', `$${fmt(data.portfolio_value)}`],
+                ['Portfolio Value', `$${fmt(balances.pabd * data.token_price)}`],
                 ['Estimated Rewards', `${fmt(data.estimated_rewards)} PAB-D`],
                 ['Next Unlock Date', data.next_unlock_date ? new Date(data.next_unlock_date).toLocaleDateString() : '—'],
               ].map(([k, v]) => (
@@ -265,7 +281,7 @@ export function Dashboard() {
             </ol>
             <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Wallet PAB-D</div><b>{fmt(balances.pabd)}</b></div>
-              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Available</div><b>{fmt(data.available_tokens)}</b></div>
+              <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Available</div><b>{fmt(stakeable)}</b></div>
               <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Staked</div><b>{fmt(data.total_staked)}</b></div>
               <div className="rounded-xl bg-white/5 p-3"><div className="text-[#7f8aa5]">Rewards Est.</div><b>{fmt(data.estimated_rewards)}</b></div>
             </div>
@@ -276,8 +292,14 @@ export function Dashboard() {
         </section>
       </div>
 
-      <BuyModal open={buyOpen} onClose={() => setBuyOpen(false)} dashboard={data} onSuccess={setData} />
-      <StakeModal open={stakeOpen} onClose={() => setStakeOpen(false)} dashboard={data} onSuccess={setData} />
+      <BuyModal open={buyOpen} onClose={() => setBuyOpen(false)} dashboard={data} onSuccess={handleTradeSuccess} />
+      <StakeModal
+        open={stakeOpen}
+        onClose={() => setStakeOpen(false)}
+        dashboard={data}
+        walletPabd={balances.pabd}
+        onSuccess={handleTradeSuccess}
+      />
     </div>
   )
 }
