@@ -26,6 +26,7 @@ class PortfolioService
         $stakes = Stake::query()
             ->where('user_id', $user->id)
             ->where('status', 'active')
+            ->orderBy('ends_at')
             ->get();
 
         $totalStaked = (float) $stakes->sum('amount');
@@ -39,6 +40,31 @@ class PortfolioService
         // Instant delivery model: purchased tokens are available immediately for staking.
         $available = max(0, $totalPurchased - $totalStaked);
 
+        $stakeRows = $stakes->map(function (Stake $stake) {
+            $amount = (float) $stake->amount;
+            $reward = (float) $stake->estimated_reward;
+            $claimable = $stake->ends_at !== null && $stake->ends_at->isPast();
+
+            return [
+                'id' => $stake->id,
+                'onchain_stake_id' => $stake->onchain_stake_id,
+                'amount' => $amount,
+                'lock_days' => (int) $stake->lock_days,
+                'bonus_percent' => (float) $stake->apy,
+                'estimated_reward' => $reward,
+                'total_return' => round($amount + $reward, 8),
+                'starts_at' => optional($stake->starts_at)->toIso8601String(),
+                'ends_at' => optional($stake->ends_at)->toIso8601String(),
+                'claimable' => $claimable,
+                'status' => $stake->status,
+                'tx_hash' => $stake->tx_hash,
+            ];
+        })->values()->all();
+
+        $claimableTokens = (float) collect($stakeRows)
+            ->where('claimable', true)
+            ->sum('total_return');
+
         return [
             'wallet_address' => $user->wallet_address,
             'token_price' => $price,
@@ -47,7 +73,7 @@ class PortfolioService
             'available_tokens' => $available,
             'locked_tokens' => $totalStaked, // actively staked/locked in staking
             'unlocked_tokens' => $available,
-            'claimable_tokens' => 0,
+            'claimable_tokens' => $claimableTokens,
             'total_claimed' => $totalClaimed,
             'portfolio_value' => round($totalPurchased * $price, 4),
             'estimated_rewards' => $estimatedRewards,
@@ -56,6 +82,7 @@ class PortfolioService
             'vesting_progress' => $totalPurchased > 0 ? 100 : 0,
             'delivery_mode' => 'instant',
             'active_stakes' => $stakes->count(),
+            'stakes' => $stakeRows,
             'settings' => [
                 'sale_active' => $settings->sale_active,
                 'min_buy' => (float) $settings->min_buy,

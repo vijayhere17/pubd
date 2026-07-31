@@ -120,28 +120,60 @@ class TransactionService
         $txHash = strtolower($data['tx_hash']);
         $this->assertUniqueHash($txHash);
 
-        $portfolio = $this->portfolio->forUser($user);
-        $amount = (float) ($data['amount'] ?? $portfolio['claimable_tokens']);
+        $stake = null;
+        if (! empty($data['stake_id'])) {
+            $stake = Stake::query()
+                ->where('user_id', $user->id)
+                ->where('id', (int) $data['stake_id'])
+                ->where('status', 'active')
+                ->first();
+            if (! $stake) {
+                throw ValidationException::withMessages(['stake_id' => 'Active stake not found.']);
+            }
+            if ($stake->ends_at && $stake->ends_at->isFuture()) {
+                throw ValidationException::withMessages(['stake_id' => 'Stake is still locked.']);
+            }
+        }
+
+        $amount = (float) ($data['amount'] ?? 0);
+        if ($stake && $amount <= 0) {
+            $amount = (float) $stake->amount + (float) $stake->estimated_reward;
+        }
+        if ($amount <= 0) {
+            $portfolio = $this->portfolio->forUser($user);
+            $amount = (float) ($portfolio['claimable_tokens'] ?? 0);
+        }
         if ($amount <= 0) {
             throw ValidationException::withMessages(['amount' => 'No claimable tokens.']);
         }
 
-        return DB::transaction(function () use ($user, $data, $txHash, $amount, $settings) {
+        return DB::transaction(function () use ($user, $data, $txHash, $amount, $settings, $stake) {
+            if ($stake) {
+                $stake->update([
+                    'status' => 'claimed',
+                    'claimed_reward' => $stake->estimated_reward,
+                    'unstake_tx_hash' => $txHash,
+                ]);
+            }
+
             $claim = Claim::query()->create([
                 'user_id' => $user->id,
                 'wallet_address' => $user->wallet_address,
-                'type' => $data['type'] ?? 'vesting',
+                'type' => $data['type'] ?? ($stake ? 'stake' : 'vesting'),
                 'amount' => $amount,
                 'tx_hash' => $txHash,
                 'status' => 'confirmed',
                 'claimed_at' => now(),
             ]);
 
-            $this->logWalletTx($user, 'claim', $amount, 'PAB-D', $txHash, $settings);
+            $this->logWalletTx($user, 'claim', $amount, 'PAB-D', $txHash, $settings, [
+                'stake_id' => $stake?->id,
+                'onchain_stake_id' => $data['onchain_stake_id'] ?? $stake?->onchain_stake_id,
+            ]);
 
             BlockchainLog::query()->create([
                 'event' => 'TokensClaimed',
-                'contract' => $settings->vesting_address,
+                'contract' => $settings->staking_address ?: $settings->vesting_address,
                 'tx_hash' => $txHash,
                 'wallet_address' => $user->wallet_address,
                 'payload' => $claim->toArray(),

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { ActiveStakes } from '../components/ActiveStakes'
 import { BuyModal } from '../components/BuyModal'
 import { StakeModal } from '../components/StakeModal'
 import { useWallet } from '../hooks/useWallet'
@@ -290,6 +291,9 @@ export function Dashboard() {
             </button>
           </article>
         </section>
+
+        {/* Claim section with countdown based on selected lock days */}
+        <ActiveStakes dashboard={data} onSuccess={handleTradeSuccess} />
       </div>
 
       <BuyModal open={buyOpen} onClose={() => setBuyOpen(false)} dashboard={data} onSuccess={handleTradeSuccess} />

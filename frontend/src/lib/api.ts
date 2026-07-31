@@ -12,6 +12,21 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+export type StakeRow = {
+  id: number
+  onchain_stake_id: number | null
+  amount: number
+  lock_days: number
+  bonus_percent: number
+  estimated_reward: number
+  total_return: number
+  starts_at: string | null
+  ends_at: string | null
+  claimable: boolean
+  status: string
+  tx_hash?: string
+}
+
 export type DashboardData = {
   wallet_address: string
   token_price: number
@@ -28,6 +43,7 @@ export type DashboardData = {
   next_unlock_percent: number | null
   vesting_progress: number
   active_stakes: number
+  stakes?: StakeRow[]
   settings: {
     sale_active: boolean
     min_buy: number
