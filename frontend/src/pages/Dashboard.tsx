@@ -45,26 +45,49 @@ export function Dashboard() {
 
   const reloadBalances = useCallback(async (dash?: DashboardData | null) => {
     const settings = dash?.settings ?? data?.settings
-    if (!provider || !address || !settings) return
+    if (!provider || !address) return
+
+    let chainId = Number(settings?.chain_id || 56)
+    try {
+      const network = await provider.getNetwork()
+      chainId = Number(network.chainId)
+    } catch {
+      // keep settings/fallback chain
+    }
+
+    // Prefer configured USDT; if missing/wrong network defaults, use official BSC USDT on mainnet.
+    const configuredUsdt = settings?.usdt_address || ''
+    const usdtAddress =
+      configuredUsdt && configuredUsdt.toLowerCase() !== 'null'
+        ? configuredUsdt
+        : defaultUsdtAddress(chainId)
+
+    let bnb = 0
+    let usdt = 0
+    let pabd = 0
+
     try {
       const bnbWei = await provider.getBalance(address)
-      const usdtAddress = settings.usdt_address || defaultUsdtAddress(settings.chain_id || 56)
-      const { usdt, token } = getContracts(provider, {
-        usdt: usdtAddress,
-        token: settings.token_address,
-      })
-      const [usdtBal, pabdBal] = await Promise.all([
-        readTokenBalance(usdt, address),
-        readTokenBalance(token, address),
-      ])
-      setBalances({
-        bnb: Number(bnbWei) / 1e18,
-        usdt: usdtBal,
-        pabd: pabdBal,
-      })
+      bnb = Number(bnbWei) / 1e18
     } catch {
-      // balances optional until contracts configured
+      bnb = 0
     }
+
+    try {
+      const { usdt: usdtContract } = getContracts(provider, { usdt: usdtAddress })
+      usdt = await readTokenBalance(usdtContract, address)
+    } catch {
+      usdt = 0
+    }
+
+    try {
+      const { token } = getContracts(provider, { token: settings?.token_address })
+      pabd = await readTokenBalance(token, address)
+    } catch {
+      pabd = 0
+    }
+
+    setBalances({ bnb, usdt, pabd })
   }, [provider, address, data])
 
   useEffect(() => {

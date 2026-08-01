@@ -86,9 +86,23 @@ class SaleSetting extends Model
             'treasury_wallet' => env('PABD_TREASURY_WALLET'),
         ]);
 
-                // BSC USDT default so balances work before custom admin config.
+        // BSC USDT default so balances work before custom admin config.
         if (empty($settings->usdt_address)) {
             $settings->usdt_address = '0x55d398326f99059fF775485246999027B3197955';
+        }
+
+        // Keep chain/explorer in sync with .env for live/test switches.
+        $envChainId = (int) env('PABD_CHAIN_ID', 56);
+        $envExplorer = env('PABD_EXPLORER_URL');
+        if ($envChainId > 0 && (int) $settings->chain_id !== $envChainId) {
+            $settings->chain_id = $envChainId;
+        }
+        if (! empty($envExplorer) && $settings->explorer_url !== $envExplorer) {
+            $settings->explorer_url = $envExplorer;
+        }
+        // If env provides USDT and DB still has empty/test placeholder, prefer env/mainnet USDT on chain 56.
+        if ($envChainId === 56 && empty($settings->usdt_address)) {
+            $settings->usdt_address = env('PABD_USDT_ADDRESS', '0x55d398326f99059fF775485246999027B3197955');
         }
 
         foreach ($fromEnv as $key => $value) {
