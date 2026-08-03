@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { JsonRpcProvider } from 'ethers'
 import { ActiveStakes } from '../components/ActiveStakes'
 import { BuyModal } from '../components/BuyModal'
 import { StakeModal } from '../components/StakeModal'
@@ -7,7 +8,7 @@ import { useWallet } from '../hooks/useWallet'
 import { getContracts, readTokenBalance } from '../lib/contracts'
 import { fetchDashboard, type DashboardData } from '../lib/api'
 import { useToast } from '../store/toast'
-import { defaultUsdtAddress } from '../lib/config'
+import { defaultUsdtAddress, rpcUrlForChain } from '../lib/config'
 
 function short(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`
@@ -45,43 +46,50 @@ export function Dashboard() {
 
   const reloadBalances = useCallback(async (dash?: DashboardData | null) => {
     const settings = dash?.settings ?? data?.settings
-    if (!provider || !address) return
+    if (!address) return
 
+    // Prefer API/settings chain (live=56). Fall back to wallet network, then 56.
     let chainId = Number(settings?.chain_id || 56)
-    try {
-      const network = await provider.getNetwork()
-      chainId = Number(network.chainId)
-    } catch {
-      // keep settings/fallback chain
+    if (provider) {
+      try {
+        const network = await provider.getNetwork()
+        // Only trust wallet chain if it matches configured chain or settings missing
+        const walletChain = Number(network.chainId)
+        if (!settings?.chain_id || walletChain === chainId) chainId = walletChain
+      } catch {
+        // keep settings chain
+      }
     }
 
-    // Prefer configured USDT; if missing/wrong network defaults, use official BSC USDT on mainnet.
     const configuredUsdt = settings?.usdt_address || ''
     const usdtAddress =
       configuredUsdt && configuredUsdt.toLowerCase() !== 'null'
         ? configuredUsdt
         : defaultUsdtAddress(chainId)
 
+    // Public RPC read is reliable on Hostinger even when injected provider mismatches.
+    const readProvider = new JsonRpcProvider(rpcUrlForChain(chainId), chainId)
+
     let bnb = 0
     let usdt = 0
     let pabd = 0
 
     try {
-      const bnbWei = await provider.getBalance(address)
+      const bnbWei = await readProvider.getBalance(address)
       bnb = Number(bnbWei) / 1e18
     } catch {
       bnb = 0
     }
 
     try {
-      const { usdt: usdtContract } = getContracts(provider, { usdt: usdtAddress })
+      const { usdt: usdtContract } = getContracts(readProvider, { usdt: usdtAddress })
       usdt = await readTokenBalance(usdtContract, address)
     } catch {
       usdt = 0
     }
 
     try {
-      const { token } = getContracts(provider, { token: settings?.token_address })
+      const { token } = getContracts(readProvider, { token: settings?.token_address })
       pabd = await readTokenBalance(token, address)
     } catch {
       pabd = 0
@@ -107,6 +115,13 @@ export function Dashboard() {
   useEffect(() => {
     reloadBalances(data)
   }, [provider, address, data, balanceTick, reloadBalances])
+
+  // Refresh balances when tab becomes visible again
+  useEffect(() => {
+    const onFocus = () => setBalanceTick((t) => t + 1)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   async function handleTradeSuccess(next: DashboardData) {
     setData(next)

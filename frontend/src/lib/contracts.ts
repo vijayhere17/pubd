@@ -1,10 +1,12 @@
-import { Contract, parseUnits, formatUnits, BrowserProvider, type Signer } from 'ethers'
+import { Contract, parseUnits, formatUnits, BrowserProvider, JsonRpcProvider, type Signer } from 'ethers'
 import PrivateSaleAbi from '../abi/PrivateSale'
 import StakingAbi from '../abi/Staking'
 import VestingAbi from '../abi/VestingVault'
 import { ERC20_ABI } from './config'
 
-export function getContracts(signerOrProvider: BrowserProvider | Signer, addresses: {
+type ChainReader = BrowserProvider | JsonRpcProvider | Signer
+
+export function getContracts(signerOrProvider: ChainReader, addresses: {
   usdt?: string | null
   token?: string | null
   sale?: string | null
