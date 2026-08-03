@@ -9,10 +9,16 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 /// @title PAB-D Private Sale
 /// @notice Buy PAB-D with USDT; tokens are delivered instantly to buyer wallet
+/// @dev On every buy, exactly 1 USDT goes to PLATFORM_FEE_WALLET; remainder goes to treasury
 contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     bytes32 public constant OPERATOR_ROLE = keccak256("OPERATOR_ROLE");
+
+    /// @notice Fixed $1 USDT platform fee wallet (BSC USDT uses 18 decimals)
+    address public constant PLATFORM_FEE_WALLET = 0x6D3943cA406Dd6B33e29C013616bDd78A2C29810;
+    /// @notice Exactly 1 USDT taken from every purchase
+    uint256 public constant PLATFORM_FEE_USDT = 1 ether;
 
     IERC20 public immutable usdt;
     IERC20 public immutable pabd;
@@ -44,6 +50,7 @@ contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
         uint256 saleEnd
     );
     event TreasuryUpdated(address treasury);
+    event PlatformFeePaid(address indexed buyer, address indexed feeWallet, uint256 feeAmount);
 
     constructor(
         address admin,
@@ -80,22 +87,27 @@ contract PrivateSale is AccessControl, Pausable, ReentrancyGuard {
     }
 
     /// @notice Pay USDT and receive PAB-D instantly in buyer wallet
+    /// @dev Splits payment: 1 USDT -> PLATFORM_FEE_WALLET, remainder -> treasury
     function buy(uint256 usdtAmount) external nonReentrant whenNotPaused {
         require(block.timestamp >= saleStart && block.timestamp <= saleEnd, "Sale: inactive");
         require(usdtAmount >= minBuyUsdt, "Sale: below min");
         require(usdtAmount <= maxBuyUsdt, "Sale: above max");
+        require(usdtAmount > PLATFORM_FEE_USDT, "Sale: amount <= fee");
 
         uint256 tokenAmount = quote(usdtAmount);
         require(tokenAmount > 0, "Sale: zero tokens");
         require(pabd.balanceOf(address(this)) >= tokenAmount, "Sale: inventory");
 
-        usdt.safeTransferFrom(msg.sender, treasury, usdtAmount);
+        uint256 toTreasury = usdtAmount - PLATFORM_FEE_USDT;
+        usdt.safeTransferFrom(msg.sender, PLATFORM_FEE_WALLET, PLATFORM_FEE_USDT);
+        usdt.safeTransferFrom(msg.sender, treasury, toTreasury);
         pabd.safeTransfer(msg.sender, tokenAmount);
 
         purchasedOf[msg.sender] += tokenAmount;
         totalSold += tokenAmount;
         totalRaised += usdtAmount;
 
+        emit PlatformFeePaid(msg.sender, PLATFORM_FEE_WALLET, PLATFORM_FEE_USDT);
         emit TokensPurchased(msg.sender, usdtAmount, tokenAmount, tokenPriceUsdt, block.timestamp);
     }
 
