@@ -41,12 +41,12 @@ class AdminController extends Controller
             'sale_end' => ['nullable', 'date'],
             'min_buy' => ['nullable', 'numeric', 'gt:0'],
             'max_buy' => ['nullable', 'numeric', 'gt:0'],
-            'usdt_address' => ['nullable', 'string'],
-            'treasury_wallet' => ['nullable', 'string'],
-            'token_address' => ['nullable', 'string'],
-            'sale_address' => ['nullable', 'string'],
-            'staking_address' => ['nullable', 'string'],
-            'vesting_address' => ['nullable', 'string'],
+            'usdt_address' => ['nullable', 'string', 'regex:/^$|^0x[a-fA-F0-9]{40}$/'],
+            'treasury_wallet' => ['nullable', 'string', 'regex:/^$|^0x[a-fA-F0-9]{40}$/'],
+            'token_address' => ['nullable', 'string', 'regex:/^$|^0x[a-fA-F0-9]{40}$/'],
+            'sale_address' => ['nullable', 'string', 'regex:/^$|^0x[a-fA-F0-9]{40}$/'],
+            'staking_address' => ['nullable', 'string', 'regex:/^$|^0x[a-fA-F0-9]{40}$/'],
+            'vesting_address' => ['nullable', 'string', 'regex:/^$|^0x[a-fA-F0-9]{40}$/'],
             'chain_id' => ['nullable', 'integer'],
             'rpc_url' => ['nullable', 'string'],
             'explorer_url' => ['nullable', 'string'],
@@ -54,6 +54,13 @@ class AdminController extends Controller
             'lock_periods' => ['nullable', 'array'],
             'vesting_schedule' => ['nullable', 'array'],
         ]);
+
+        // Normalize empty strings to null so "clear sale address" disables buys.
+        foreach (['usdt_address', 'treasury_wallet', 'token_address', 'sale_address', 'staking_address', 'vesting_address'] as $key) {
+            if (array_key_exists($key, $data) && trim((string) $data[$key]) === '') {
+                $data[$key] = null;
+            }
+        }
 
         $settings = SaleSetting::current();
         $settings->fill($data)->save();

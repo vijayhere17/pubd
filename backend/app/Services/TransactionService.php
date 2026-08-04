@@ -14,11 +14,16 @@ use Illuminate\Validation\ValidationException;
 
 class TransactionService
 {
-    public function __construct(private PortfolioService $portfolio) {}
+    public function __construct(
+        private PortfolioService $portfolio,
+        private BlockchainVerifyService $chain,
+    ) {}
 
     public function recordPurchase(User $user, array $data): Purchase
     {
         $settings = SaleSetting::current();
+        $this->assertSaleConfigured($settings);
+
         $txHash = strtolower($data['tx_hash']);
         $this->assertUniqueHash($txHash);
 
@@ -28,9 +33,21 @@ class TransactionService
             throw ValidationException::withMessages(['usdt_amount' => 'Amount outside allowed buy range.']);
         }
 
+        if (! $settings->sale_active) {
+            throw ValidationException::withMessages(['sale' => 'Sale is paused by admin.']);
+        }
+
+        // Only record history after confirmed success on the configured Sale contract.
+        $receipt = $this->chain->assertSuccessfulTx(
+            $txHash,
+            $settings->sale_address,
+            $user->wallet_address,
+            (int) ($settings->chain_id ?: 56)
+        );
+
         $tokens = (float) ($data['token_amount'] ?? ($price > 0 ? $usdt / $price : 0));
 
-        return DB::transaction(function () use ($user, $data, $txHash, $usdt, $tokens, $price, $settings) {
+        return DB::transaction(function () use ($user, $data, $txHash, $usdt, $tokens, $price, $settings, $receipt) {
             $purchase = Purchase::query()->create([
                 'user_id' => $user->id,
                 'wallet_address' => $user->wallet_address,
@@ -38,8 +55,8 @@ class TransactionService
                 'token_amount' => $tokens,
                 'token_price' => $price,
                 'tx_hash' => $txHash,
-                'status' => $data['status'] ?? 'confirmed',
-                'block_number' => $data['block_number'] ?? null,
+                'status' => 'confirmed',
+                'block_number' => $data['block_number'] ?? $receipt['blockNumber'],
                 'confirmations' => $data['confirmations'] ?? 1,
                 'purchased_at' => now(),
             ]);
@@ -64,6 +81,12 @@ class TransactionService
     public function recordStake(User $user, array $data): Stake
     {
         $settings = SaleSetting::current();
+        if (! $this->chain->isValidAddress($settings->staking_address) || ! $this->chain->isValidAddress($settings->token_address)) {
+            throw ValidationException::withMessages([
+                'staking' => 'Admin must set Staking + Token addresses before stake is allowed.',
+            ]);
+        }
+
         $txHash = strtolower($data['tx_hash']);
         $this->assertUniqueHash($txHash);
 
@@ -80,6 +103,13 @@ class TransactionService
         $bonusPercent = (float) ($data['apy'] ?? ($period['percent'] ?? $period['apy'] ?? 8));
         // Flat period bonus: stake 5000 for 100 days at 8% => reward 400 (total 5400)
         $estimated = round($amount * ($bonusPercent / 100), 8);
+
+        $this->chain->assertSuccessfulTx(
+            $txHash,
+            $settings->staking_address,
+            $user->wallet_address,
+            (int) ($settings->chain_id ?: 56)
+        );
 
         return DB::transaction(function () use ($user, $data, $txHash, $amount, $lockDays, $bonusPercent, $estimated, $settings) {
             $stake = Stake::query()->create([
@@ -181,6 +211,25 @@ class TransactionService
 
             return $claim;
         });
+    }
+
+    private function assertSaleConfigured(SaleSetting $settings): void
+    {
+        if (! $this->chain->isValidAddress($settings->sale_address)) {
+            throw ValidationException::withMessages([
+                'sale_address' => 'Admin must set Sale Address before buy is allowed. No payment or history will be created.',
+            ]);
+        }
+        if (! $this->chain->isValidAddress($settings->usdt_address)) {
+            throw ValidationException::withMessages([
+                'usdt_address' => 'Admin must set USDT Address before buy is allowed.',
+            ]);
+        }
+        if (! $this->chain->isValidAddress($settings->token_address)) {
+            throw ValidationException::withMessages([
+                'token_address' => 'Admin must set Token Address before buy is allowed.',
+            ]);
+        }
     }
 
     private function assertUniqueHash(string $txHash): void

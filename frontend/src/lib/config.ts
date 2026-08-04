@@ -27,6 +27,11 @@ export const BSC = {
   blockExplorerUrls: [EXPLORER_URL],
 }
 
+export function rpcUrlForChain(chainId: number): string {
+  if (chainId === 97) return 'https://data-seed-prebsc-1-s1.binance.org:8545/'
+  return 'https://bsc-dataseed.binance.org/'
+}
+
 export const ERC20_ABI = [
   'function balanceOf(address) view returns (uint256)',
   'function decimals() view returns (uint8)',

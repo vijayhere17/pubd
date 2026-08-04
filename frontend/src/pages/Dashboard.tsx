@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { JsonRpcProvider } from 'ethers'
 import { ActiveStakes } from '../components/ActiveStakes'
 import { BuyModal } from '../components/BuyModal'
 import { StakeModal } from '../components/StakeModal'
@@ -7,7 +8,7 @@ import { useWallet } from '../hooks/useWallet'
 import { getContracts, readTokenBalance } from '../lib/contracts'
 import { fetchDashboard, type DashboardData } from '../lib/api'
 import { useToast } from '../store/toast'
-import { defaultUsdtAddress } from '../lib/config'
+import { defaultUsdtAddress, rpcUrlForChain } from '../lib/config'
 
 function short(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`
@@ -45,26 +46,56 @@ export function Dashboard() {
 
   const reloadBalances = useCallback(async (dash?: DashboardData | null) => {
     const settings = dash?.settings ?? data?.settings
-    if (!provider || !address || !settings) return
-    try {
-      const bnbWei = await provider.getBalance(address)
-      const usdtAddress = settings.usdt_address || defaultUsdtAddress(settings.chain_id || 56)
-      const { usdt, token } = getContracts(provider, {
-        usdt: usdtAddress,
-        token: settings.token_address,
-      })
-      const [usdtBal, pabdBal] = await Promise.all([
-        readTokenBalance(usdt, address),
-        readTokenBalance(token, address),
-      ])
-      setBalances({
-        bnb: Number(bnbWei) / 1e18,
-        usdt: usdtBal,
-        pabd: pabdBal,
-      })
-    } catch {
-      // balances optional until contracts configured
+    if (!address) return
+
+    // Prefer API/settings chain (live=56). Fall back to wallet network, then 56.
+    let chainId = Number(settings?.chain_id || 56)
+    if (provider) {
+      try {
+        const network = await provider.getNetwork()
+        // Only trust wallet chain if it matches configured chain or settings missing
+        const walletChain = Number(network.chainId)
+        if (!settings?.chain_id || walletChain === chainId) chainId = walletChain
+      } catch {
+        // keep settings chain
+      }
     }
+
+    const configuredUsdt = settings?.usdt_address || ''
+    const usdtAddress =
+      configuredUsdt && configuredUsdt.toLowerCase() !== 'null'
+        ? configuredUsdt
+        : defaultUsdtAddress(chainId)
+
+    // Public RPC read is reliable on Hostinger even when injected provider mismatches.
+    const readProvider = new JsonRpcProvider(rpcUrlForChain(chainId), chainId)
+
+    let bnb = 0
+    let usdt = 0
+    let pabd = 0
+
+    try {
+      const bnbWei = await readProvider.getBalance(address)
+      bnb = Number(bnbWei) / 1e18
+    } catch {
+      bnb = 0
+    }
+
+    try {
+      const { usdt: usdtContract } = getContracts(readProvider, { usdt: usdtAddress })
+      usdt = await readTokenBalance(usdtContract, address)
+    } catch {
+      usdt = 0
+    }
+
+    try {
+      const { token } = getContracts(readProvider, { token: settings?.token_address })
+      pabd = await readTokenBalance(token, address)
+    } catch {
+      pabd = 0
+    }
+
+    setBalances({ bnb, usdt, pabd })
   }, [provider, address, data])
 
   useEffect(() => {
@@ -84,6 +115,13 @@ export function Dashboard() {
   useEffect(() => {
     reloadBalances(data)
   }, [provider, address, data, balanceTick, reloadBalances])
+
+  // Refresh balances when tab becomes visible again
+  useEffect(() => {
+    const onFocus = () => setBalanceTick((t) => t + 1)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   async function handleTradeSuccess(next: DashboardData) {
     setData(next)
@@ -234,7 +272,14 @@ export function Dashboard() {
             <p className="mt-2 text-sm text-[#b9c2d6]">
               Buy PAB-D tokens using USDT at the best available price.
             </p>
-            <button onClick={() => setBuyOpen(true)} className="dash-btn-gold mt-5">
+            {!data.settings.sale_address ? (
+              <p className="mt-3 text-xs text-rose-300">Sale address not set by admin — buying disabled.</p>
+            ) : null}
+            <button
+              onClick={() => setBuyOpen(true)}
+              disabled={!data.settings.sale_address || data.settings.sale_active === false}
+              className="dash-btn-gold mt-5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
               BUY NOW →
             </button>
           </article>

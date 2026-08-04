@@ -105,13 +105,16 @@ async function authenticate(address: string, eip1193: Eip1193Provider) {
 export function WalletProvider({ children }: { children: ReactNode }) {
   const [address, setAddress] = useState<string | null>(localStorage.getItem('pabd_wallet'))
   const [rawProvider, setRawProvider] = useState<Eip1193Provider | null>(null)
+  const [providerEpoch, setProviderEpoch] = useState(0)
   const [connecting, setConnecting] = useState(false)
   const [restoring, setRestoring] = useState(true)
   const toast = useToast()
 
+  // Do not hard-lock network here. A forced chain id (e.g. stale build on 97)
+  // makes ethers reject mainnet balance reads and the dashboard shows 0.
   const provider = useMemo(
-    () => (rawProvider ? new BrowserProvider(rawProvider, CHAIN_ID) : null),
-    [rawProvider],
+    () => (rawProvider ? new BrowserProvider(rawProvider) : null),
+    [rawProvider, providerEpoch],
   )
 
   const finishConnect = useCallback(async (eip1193: Eip1193Provider) => {
@@ -276,8 +279,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (!accounts?.[0]) disconnect()
       else setAddress(accounts[0].toLowerCase())
     }
+    const onChainChanged = () => {
+      // Recreate BrowserProvider against the wallet's new network.
+      setProviderEpoch((n) => n + 1)
+    }
     ethereum.on('accountsChanged', onAccounts)
-    return () => ethereum.removeListener?.('accountsChanged', onAccounts)
+    ethereum.on('chainChanged', onChainChanged)
+    return () => {
+      ethereum.removeListener?.('accountsChanged', onAccounts)
+      ethereum.removeListener?.('chainChanged', onChainChanged)
+    }
   }, [disconnect])
 
   const value = useMemo(() => ({

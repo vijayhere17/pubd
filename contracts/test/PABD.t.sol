@@ -42,6 +42,8 @@ contract PABDTest is Test {
 
     function testBuySendsTokensInstantlyToWallet() public {
         uint256 beforeBal = token.balanceOf(buyer);
+        uint256 feeBefore = usdt.balanceOf(sale.PLATFORM_FEE_WALLET());
+        uint256 treasuryBefore = usdt.balanceOf(treasury);
 
         vm.startPrank(buyer);
         usdt.approve(address(sale), 100 ether);
@@ -50,6 +52,24 @@ contract PABDTest is Test {
 
         assertEq(sale.purchasedOf(buyer), 1000 ether);
         assertEq(token.balanceOf(buyer), beforeBal + 1000 ether);
+        // $1 platform fee, remainder to treasury
+        assertEq(usdt.balanceOf(sale.PLATFORM_FEE_WALLET()), feeBefore + 1 ether);
+        assertEq(usdt.balanceOf(treasury), treasuryBefore + 99 ether);
+    }
+
+    function testBuySplitsOneDollarFeeOnLargePurchase() public {
+        address fee = sale.PLATFORM_FEE_WALLET();
+        uint256 feeBefore = usdt.balanceOf(fee);
+        uint256 treasuryBefore = usdt.balanceOf(treasury);
+
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether); // $500 buy
+        vm.stopPrank();
+
+        assertEq(usdt.balanceOf(fee), feeBefore + 1 ether);
+        assertEq(usdt.balanceOf(treasury), treasuryBefore + 499 ether);
+        assertEq(token.balanceOf(buyer), 5000 ether);
     }
 
     function testStakeFlatBonusClaimAfterLock() public {
