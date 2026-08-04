@@ -97,7 +97,16 @@ async function authenticate(address: string, eip1193: Eip1193Provider) {
       params: [message, address],
     }) as string
     await walletLogin(address, signature, nonce)
-  } catch {
+  } catch (err: unknown) {
+    // Only fall back when signing/nonce fails. Do not retry after a failed
+    // /wallet-login — that double-insert races and hits users_email_unique.
+    const code = (err as { code?: number })?.code
+    const status = (err as { response?: { status?: number } })?.response?.status
+    if (status && status >= 400) throw err
+    if (code === 4001) {
+      await walletLogin(address)
+      return
+    }
     await walletLogin(address)
   }
 }
