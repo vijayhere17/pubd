@@ -272,7 +272,14 @@ export function Dashboard() {
             <p className="mt-2 text-sm text-[#b9c2d6]">
               Buy PAB-D tokens using USDT at the best available price.
             </p>
-            <button onClick={() => setBuyOpen(true)} className="dash-btn-gold mt-5">
+            {!data.settings.sale_address ? (
+              <p className="mt-3 text-xs text-rose-300">Sale address not set by admin — buying disabled.</p>
+            ) : null}
+            <button
+              onClick={() => setBuyOpen(true)}
+              disabled={!data.settings.sale_address || data.settings.sale_active === false}
+              className="dash-btn-gold mt-5 disabled:cursor-not-allowed disabled:opacity-50"
+            >
               BUY NOW →
             </button>
           </article>

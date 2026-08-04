@@ -42,15 +42,39 @@ export async function buyTokens(sale: Contract, usdtAmount: string, usdtDecimals
   const value = parseUnits(usdtAmount, usdtDecimals)
   const tx = await sale.buy(value)
   const receipt = await tx.wait()
-  return { hash: tx.hash as string, blockNumber: receipt?.blockNumber as number }
+  if (!receipt || Number(receipt.status) !== 1) {
+    throw new Error('Buy transaction failed on-chain. No payment and no history recorded.')
+  }
+
+  // Require TokensPurchased event from this Sale contract
+  let purchased = false
+  for (const log of receipt.logs || []) {
+    try {
+      const parsed = sale.interface.parseLog(log)
+      if (parsed?.name === 'TokensPurchased') {
+        purchased = true
+        break
+      }
+    } catch {
+      // ignore unrelated logs
+    }
+  }
+  if (!purchased) {
+    throw new Error('Buy did not emit TokensPurchased. Payment was not completed.')
+  }
+
+  return { hash: tx.hash as string, blockNumber: receipt.blockNumber as number }
 }
 
 export async function stakeTokens(staking: Contract, amount: string, lockDays: number, decimals = 18) {
   const value = parseUnits(amount, decimals)
   const tx = await staking.stake(value, lockDays)
   const receipt = await tx.wait()
+  if (!receipt || Number(receipt.status) !== 1) {
+    throw new Error('Stake transaction failed on-chain. No history recorded.')
+  }
   let stakeId: number | null = null
-  for (const log of receipt?.logs || []) {
+  for (const log of receipt.logs || []) {
     try {
       const parsed = staking.interface.parseLog(log)
       if (parsed?.name === 'Staked') {
@@ -61,7 +85,7 @@ export async function stakeTokens(staking: Contract, amount: string, lockDays: n
       // not this contract's log
     }
   }
-  return { hash: tx.hash as string, blockNumber: receipt?.blockNumber as number, stakeId }
+  return { hash: tx.hash as string, blockNumber: receipt.blockNumber as number, stakeId }
 }
 
 export async function unstakeTokens(staking: Contract, stakeId: number) {

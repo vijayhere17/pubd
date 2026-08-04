@@ -65,6 +65,11 @@ export function Admin() {
     return <div className="flex min-h-screen items-center justify-center text-[#b9c2d6]">Loading admin…</div>
   }
 
+  const saleConfigured = /^0x[a-fA-F0-9]{40}$/.test(String(settings.sale_address || ''))
+  const usdtConfigured = /^0x[a-fA-F0-9]{40}$/.test(String(settings.usdt_address || ''))
+  const tokenConfigured = /^0x[a-fA-F0-9]{40}$/.test(String(settings.token_address || ''))
+  const buyReady = saleConfigured && usdtConfigured && tokenConfigured && settings.sale_active !== false
+
   return (
     <div className="min-h-screen px-4 py-6 md:px-8">
       <div className="mx-auto max-w-6xl">
@@ -75,6 +80,12 @@ export function Admin() {
           </div>
           <Link to="/dashboard" className="rounded-xl border border-white/10 px-4 py-2 text-sm">User Dashboard</Link>
         </header>
+
+        <div className={`mb-5 rounded-2xl border px-4 py-3 text-sm ${buyReady ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-rose-400/30 bg-rose-500/10 text-rose-200'}`}>
+          {buyReady
+            ? 'Buy is LIVE — Sale/USDT/Token addresses are set. Users can pay USDT and receive PAB-D.'
+            : 'Buy is DISABLED — set Sale Address + USDT Address + Token Address below, keep sale active. Until then no on-chain payment and no history will be created.'}
+        </div>
 
         <section className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {([
@@ -121,14 +132,18 @@ export function Admin() {
 
         {tab === 'settings' && (
           <form onSubmit={saveSettings} className="glass grid gap-4 rounded-2xl p-6 md:grid-cols-2">
+            <p className="md:col-span-2 text-sm text-[#b9c2d6]">
+              <b className="text-[#f6e3aa]">Sale Address</b> controls the live buy contract. Change it anytime and Save —
+              the app will use the new Sale for payments. Clear it to stop all buys.
+            </p>
             {[
               ['token_price', 'Token Price'],
               ['min_buy', 'Minimum Buy'],
               ['max_buy', 'Maximum Buy'],
-              ['usdt_address', 'USDT Address'],
+              ['usdt_address', 'USDT Address *'],
               ['treasury_wallet', 'Treasury Wallet'],
-              ['token_address', 'Token Address'],
-              ['sale_address', 'Sale Address'],
+              ['token_address', 'Token Address *'],
+              ['sale_address', 'Sale Address * (required for buy)'],
               ['staking_address', 'Staking Address'],
               ['vesting_address', 'Vesting Address'],
               ['stake_apy_default', 'Stake APY'],
@@ -136,14 +151,23 @@ export function Admin() {
               ['explorer_url', 'Explorer URL'],
             ].map(([key, label]) => (
               <label key={key} className="block text-sm">
-                <span className="mb-1 block text-[#7c879f]">{label}</span>
+                <span className={`mb-1 block ${key === 'sale_address' ? 'text-[#f0d48a]' : 'text-[#7c879f]'}`}>{label}</span>
                 <input
-                  className="w-full rounded-xl border border-white/10 bg-[#040914] px-3 py-2"
+                  className={`w-full rounded-xl border bg-[#040914] px-3 py-2 ${key === 'sale_address' ? 'border-[#d9a94f]/50' : 'border-white/10'}`}
                   value={String(settings[key] ?? '')}
+                  placeholder={key.includes('address') || key.includes('wallet') ? '0x...' : ''}
                   onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.value }))}
                 />
               </label>
             ))}
+            <label className="flex items-center gap-3 text-sm md:col-span-2">
+              <input
+                type="checkbox"
+                checked={settings.sale_active !== false}
+                onChange={(e) => setSettings((s) => ({ ...s, sale_active: e.target.checked }))}
+              />
+              <span className="text-[#b9c2d6]">Sale Active (uncheck to pause buys without clearing addresses)</span>
+            </label>
             <label className="block text-sm md:col-span-2">
               <span className="mb-1 block text-[#7c879f]">Vesting Schedule (JSON)</span>
               <textarea
