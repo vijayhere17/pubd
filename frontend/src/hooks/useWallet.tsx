@@ -89,7 +89,7 @@ async function switchToBsc(eip1193: Eip1193Provider) {
   }
 }
 
-async function isUserRejection(err: unknown): boolean {
+function isUserRejection(err: unknown): boolean {
   const code = (err as { code?: number | string })?.code
   if (code === 4001 || code === 'ACTION_REJECTED' || code === '4001') return true
   const msg = String((err as Error)?.message || '')
