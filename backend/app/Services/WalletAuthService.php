@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\AuthNonce;
 use App\Models\User;
 use Elliptic\EC;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use kornrunner\Keccak;
@@ -104,16 +105,15 @@ class WalletAuthService
 
     private function issueToken(string $wallet): array
     {
-        $user = User::query()->firstOrCreate(
-            ['wallet_address' => $wallet],
-            [
-                'name' => 'Wallet '.substr($wallet, 0, 6).'…'.substr($wallet, -4),
-                'email' => $wallet.'@wallet.pabd.local',
-                'password' => null,
-            ]
-        );
+        $email = $wallet.'@wallet.pabd.local';
+        $user = $this->findOrCreateWalletUser($wallet, $email);
 
-        $user->forceFill(['last_login_at' => now()])->save();
+        // Normalize legacy checksummed rows so later lookups stay stable.
+        $user->forceFill([
+            'wallet_address' => $wallet,
+            'email' => $email,
+            'last_login_at' => now(),
+        ])->save();
 
         return [
             'token' => $user->createToken('wallet')->plainTextToken,
@@ -124,6 +124,37 @@ class WalletAuthService
                 'name' => $user->name,
             ],
         ];
+    }
+
+    private function findOrCreateWalletUser(string $wallet, string $email): User
+    {
+        $user = User::query()
+            ->where(function ($query) use ($wallet, $email) {
+                $query->whereRaw('LOWER(wallet_address) = ?', [$wallet])
+                    ->orWhereRaw('LOWER(email) = ?', [$email]);
+            })
+            ->first();
+
+        if ($user) {
+            return $user;
+        }
+
+        try {
+            return User::query()->create([
+                'wallet_address' => $wallet,
+                'name' => 'Wallet '.substr($wallet, 0, 6).'…'.substr($wallet, -4),
+                'email' => $email,
+                'password' => null,
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            // Concurrent login or case-variant row: reuse the existing user.
+            return User::query()
+                ->where(function ($query) use ($wallet, $email) {
+                    $query->whereRaw('LOWER(wallet_address) = ?', [$wallet])
+                        ->orWhereRaw('LOWER(email) = ?', [$email]);
+                })
+                ->firstOrFail();
+        }
     }
 
     private function assertAddress(string $wallet): void
