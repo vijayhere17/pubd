@@ -89,16 +89,27 @@ async function switchToBsc(eip1193: Eip1193Provider) {
   }
 }
 
+function isUserRejection(err: unknown): boolean {
+  const code = (err as { code?: number | string })?.code
+  if (code === 4001 || code === 'ACTION_REJECTED' || code === '4001') return true
+  const msg = String((err as Error)?.message || '')
+  return /user rejected|rejected the request|denied|cancelled|canceled/i.test(msg)
+}
+
 async function authenticate(address: string, eip1193: Eip1193Provider) {
+  const { message, nonce } = await fetchNonce(address)
   try {
-    const { message, nonce } = await fetchNonce(address)
     const signature = await eip1193.request({
       method: 'personal_sign',
       params: [message, address],
     }) as string
     await walletLogin(address, signature, nonce)
-  } catch {
-    await walletLogin(address)
+  } catch (err: unknown) {
+    // Cancel / reject must NOT fall back to unsigned login (that was connecting anyway).
+    if (isUserRejection(err)) {
+      throw new Error('Wallet connection was cancelled.')
+    }
+    throw err instanceof Error ? err : new Error('Wallet authentication failed.')
   }
 }
 
@@ -122,10 +133,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     const accounts = await eip1193.request({ method: 'eth_requestAccounts' }) as string[]
     const account = accounts[0]
     if (!account) throw new Error('No account returned')
-    setRawProvider(eip1193)
-    setAddress(account.toLowerCase())
-    await authenticate(account.toLowerCase(), eip1193)
-    return account.toLowerCase()
+    const normalized = account.toLowerCase()
+    try {
+      // Authenticate first. Only then mark the wallet as connected.
+      await authenticate(normalized, eip1193)
+      setRawProvider(eip1193)
+      setAddress(normalized)
+      return normalized
+    } catch (err) {
+      setRawProvider(null)
+      setAddress(null)
+      localStorage.removeItem('pabd_token')
+      localStorage.removeItem('pabd_wallet')
+      localStorage.removeItem('pabd_is_admin')
+      throw err
+    }
   }, [])
 
   // Keep session alive on refresh: reattach injected provider without forcing a new popup when possible.
