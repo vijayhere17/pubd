@@ -97,7 +97,7 @@ export async function assertStakingReady(
   stakingAddress: string,
   tokenAddress: string,
   stakeAmount: string,
-  lockDays: number,
+  _lockDays: number,
 ) {
   const code = await readProvider.getCode(stakingAddress)
   if (!code || code === '0x') {
@@ -123,13 +123,7 @@ export async function assertStakingReady(
     throw new Error(`Minimum stake is ${formatUnits(minRaw, 18)} PAB-D.`)
   }
 
-  const reward: bigint = await staking.estimatedReward(value, lockDays)
-  const reserve: bigint = await staking.rewardReserve()
-  if (reserve < reward) {
-    throw new Error(
-      `Staking reward reserve too low (need ${formatUnits(reward, 18)} PAB-D). Admin must fundRewards on the Staking contract.`,
-    )
-  }
+  // Reward reserve is optional at stake time — admin may fundRewards later.
 }
 
 export async function unstakeTokens(staking: Contract, stakeId: number) {

@@ -76,8 +76,8 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         LockPeriod memory period = lockPeriods[lockDays];
         require(period.active, "Stake: period");
 
+        // Bonus is estimated at stake time; admin may fund rewardReserve later before unstake.
         uint256 reward = (amount * period.rewardBps) / 10_000;
-        require(rewardReserve >= reward, "Stake: reserve");
 
         pabd.safeTransferFrom(msg.sender, address(this), amount);
 
@@ -145,16 +145,17 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         totalStakedOf[msg.sender] -= principal;
         totalStaked -= principal;
 
-        if (rewards > 0) {
-            require(rewardReserve >= rewards, "Stake: reserve");
-            info.claimedRewards += rewards;
-            rewardReserve -= rewards;
-            pabd.safeTransfer(msg.sender, principal + rewards);
-        } else {
-            pabd.safeTransfer(msg.sender, principal);
+        // Always return principal. Pay bonus only from whatever admin has funded so far.
+        uint256 paidRewards = 0;
+        if (rewards > 0 && rewardReserve > 0) {
+            paidRewards = rewards > rewardReserve ? rewardReserve : rewards;
+            rewardReserve -= paidRewards;
+            info.claimedRewards += paidRewards;
         }
 
-        emit Unstaked(msg.sender, stakeId, principal, rewards);
+        pabd.safeTransfer(msg.sender, principal + paidRewards);
+
+        emit Unstaked(msg.sender, stakeId, principal, paidRewards);
     }
 
     function setMinStakeAmount(uint256 amount) external onlyRole(OPERATOR_ROLE) {

@@ -118,15 +118,53 @@ contract PABDTest is Test {
         assertEq(staking.totalStakedOf(buyer), 5000 ether);
     }
 
-    function testStakeRejectsWhenRewardReserveEmpty() public {
-        // Fresh staking with zero reserve
+    function testStakeAllowedWhenRewardReserveEmpty() public {
+        // Reserve is optional at stake time — admin can fund later before/at claim.
         Staking empty = new Staking(admin, address(token));
         vm.startPrank(buyer);
         usdt.approve(address(sale), 500 ether);
         sale.buy(500 ether);
         token.approve(address(empty), 5000 ether);
-        vm.expectRevert("Stake: reserve");
         empty.stake(5000 ether, 100);
+        assertEq(empty.totalStakedOf(buyer), 5000 ether);
+        assertEq(token.balanceOf(address(empty)), 5000 ether);
+        vm.stopPrank();
+    }
+
+    function testUnstakePaysPrincipalEvenIfReserveEmpty() public {
+        Staking empty = new Staking(admin, address(token));
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether);
+        token.approve(address(empty), 5000 ether);
+        empty.stake(5000 ether, 100);
+        vm.warp(block.timestamp + 100 days);
+        uint256 beforeBal = token.balanceOf(buyer);
+        empty.unstake(1);
+        // Principal returned; bonus 0 because reserve was never funded
+        assertEq(token.balanceOf(buyer), beforeBal + 5000 ether);
+        vm.stopPrank();
+    }
+
+    function testUnstakePaysBonusAfterAdminFundsLater() public {
+        Staking empty = new Staking(admin, address(token));
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether);
+        token.approve(address(empty), 5000 ether);
+        empty.stake(5000 ether, 100);
+        vm.stopPrank();
+
+        vm.startPrank(admin);
+        token.approve(address(empty), 400 ether);
+        empty.fundRewards(400 ether);
+        vm.stopPrank();
+
+        vm.startPrank(buyer);
+        vm.warp(block.timestamp + 100 days);
+        uint256 beforeBal = token.balanceOf(buyer);
+        empty.unstake(1);
+        assertEq(token.balanceOf(buyer), beforeBal + 5400 ether);
         vm.stopPrank();
     }
 
