@@ -85,7 +85,45 @@ export async function stakeTokens(staking: Contract, amount: string, lockDays: n
       // not this contract's log
     }
   }
+  if (stakeId === null) {
+    throw new Error('Stake did not emit Staked event. Tokens were not locked. No history recorded.')
+  }
   return { hash: tx.hash as string, blockNumber: receipt.blockNumber as number, stakeId }
+}
+
+/** Preflight: staking must be a real contract, correct token, and funded rewards. */
+export async function assertStakingReady(
+  readProvider: BrowserProvider | JsonRpcProvider,
+  stakingAddress: string,
+  tokenAddress: string,
+  stakeAmount: string,
+  _lockDays: number,
+) {
+  const code = await readProvider.getCode(stakingAddress)
+  if (!code || code === '0x') {
+    throw new Error('Staking Address has no contract on this network. Redeploy Staking and update Admin.')
+  }
+
+  const { staking } = getContracts(readProvider, { staking: stakingAddress })
+  if (!staking) throw new Error('Staking contract missing')
+
+  const onchainToken = String(await staking.pabd()).toLowerCase()
+  if (onchainToken !== tokenAddress.toLowerCase()) {
+    throw new Error(
+      `Staking pabd() is ${onchainToken}, but Admin Token Address is ${tokenAddress}. Redeploy Staking with the correct token.`,
+    )
+  }
+
+  const paused = Boolean(await staking.paused())
+  if (paused) throw new Error('Staking contract is paused.')
+
+  const minRaw: bigint = await staking.minStakeAmount()
+  const value = parseUnits(stakeAmount, 18)
+  if (value < minRaw) {
+    throw new Error(`Minimum stake is ${formatUnits(minRaw, 18)} PAB-D.`)
+  }
+
+  // Reward reserve is optional at stake time — admin may fundRewards later.
 }
 
 export async function unstakeTokens(staking: Contract, stakeId: number) {

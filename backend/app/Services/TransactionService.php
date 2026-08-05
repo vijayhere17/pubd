@@ -92,21 +92,31 @@ class TransactionService
 
         $amount = (float) $data['amount'];
         $lockDays = (int) $data['lock_days'];
-        $minStake = 5000; // 5000 PAB-D = $500 at $0.10
-        if ($amount < $minStake) {
+        $minStakeUsd = $settings->minStakeUsd();
+        $minStakePabd = $settings->minStakePabd();
+        $price = (float) $settings->token_price;
+        $stakeUsd = $price > 0 ? round($amount * $price, 8) : 0;
+
+        if ($amount + 1e-12 < $minStakePabd || $stakeUsd + 1e-12 < $minStakeUsd) {
             throw ValidationException::withMessages([
-                'amount' => 'Minimum stake is 5000 PAB-D ($500 at current $0.10 price).',
+                'amount' => sprintf(
+                    'Minimum stake is $%s (≈ %s PAB-D at $%s each).',
+                    rtrim(rtrim(number_format($minStakeUsd, 2, '.', ''), '0'), '.') ?: '0',
+                    rtrim(rtrim(number_format($minStakePabd, 8, '.', ''), '0'), '.') ?: '0',
+                    rtrim(rtrim(number_format($price, 8, '.', ''), '0'), '.') ?: '0'
+                ),
             ]);
         }
         $periods = collect($settings->lock_periods ?? []);
         $period = $periods->firstWhere('days', $lockDays);
         $bonusPercent = (float) ($data['apy'] ?? ($period['percent'] ?? $period['apy'] ?? 8));
-        // Flat period bonus: stake 5000 for 100 days at 8% => reward 400 (total 5400)
+        // Flat period bonus: stake amount × percent (e.g. 5000 × 8% => 400)
         $estimated = round($amount * ($bonusPercent / 100), 8);
 
-        $this->chain->assertSuccessfulTx(
+        $this->chain->assertStakeTokenTransfer(
             $txHash,
             $settings->staking_address,
+            $settings->token_address,
             $user->wallet_address,
             (int) ($settings->chain_id ?: 56)
         );

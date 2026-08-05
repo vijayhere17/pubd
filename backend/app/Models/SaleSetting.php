@@ -23,6 +23,7 @@ class SaleSetting extends Model
         'rpc_url',
         'explorer_url',
         'stake_apy_default',
+        'min_stake_usd',
         'lock_periods',
         'vesting_schedule',
     ];
@@ -37,6 +38,7 @@ class SaleSetting extends Model
             'min_buy' => 'decimal:18',
             'max_buy' => 'decimal:18',
             'stake_apy_default' => 'decimal:2',
+            'min_stake_usd' => 'decimal:8',
             'lock_periods' => 'array',
             'vesting_schedule' => 'array',
         ];
@@ -54,6 +56,7 @@ class SaleSetting extends Model
             'chain_id' => (int) env('PABD_CHAIN_ID', 56),
             'explorer_url' => env('PABD_EXPLORER_URL', 'https://bscscan.com'),
             'stake_apy_default' => 8,
+            'min_stake_usd' => 500,
             'usdt_address' => env('PABD_USDT_ADDRESS', '0x55d398326f99059fF775485246999027B3197955'),
             'token_address' => env('PABD_TOKEN_ADDRESS'),
             'sale_address' => env('PABD_SALE_ADDRESS'),
@@ -132,5 +135,26 @@ class SaleSetting extends Model
         }
 
         return $settings;
+    }
+
+    /** Minimum stake in USD (default $500). */
+    public function minStakeUsd(): float
+    {
+        $usd = (float) ($this->min_stake_usd ?? 500);
+        return $usd > 0 ? $usd : 500.0;
+    }
+
+    /**
+     * Minimum stake in PAB-D derived from USD min ÷ token price.
+     * Example: $500 / $0.10 = 5000 PAB-D.
+     */
+    public function minStakePabd(): float
+    {
+        $price = (float) $this->token_price;
+        if ($price <= 0) {
+            return 5000.0;
+        }
+
+        return round($this->minStakeUsd() / $price, 8);
     }
 }

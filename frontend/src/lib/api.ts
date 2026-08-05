@@ -49,6 +49,7 @@ export type DashboardData = {
     min_buy: number
     max_buy: number
     min_stake?: number
+    min_stake_usd?: number
     usdt_address: string | null
     token_address: string | null
     sale_address: string | null

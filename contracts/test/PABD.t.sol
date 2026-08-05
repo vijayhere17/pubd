@@ -99,6 +99,113 @@ contract PABDTest is Test {
         vm.stopPrank();
     }
 
+    function testStakeMovesPabdFromUserToStakingNotAdmin() public {
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether); // 5000 PAB-D
+
+        uint256 userBefore = token.balanceOf(buyer);
+        uint256 stakingBefore = token.balanceOf(address(staking));
+        uint256 adminBefore = token.balanceOf(admin);
+
+        token.approve(address(staking), 5000 ether);
+        staking.stake(5000 ether, 100);
+        vm.stopPrank();
+
+        assertEq(token.balanceOf(buyer), userBefore - 5000 ether, "user PAB-D must decrease");
+        assertEq(token.balanceOf(address(staking)), stakingBefore + 5000 ether, "staking contract holds principal");
+        assertEq(token.balanceOf(admin), adminBefore, "admin wallet must NOT receive stake principal");
+        assertEq(staking.totalStakedOf(buyer), 5000 ether);
+    }
+
+    function testStakeAllowedWhenRewardReserveEmpty() public {
+        // Reserve is optional at stake time — admin can fund later before/at claim.
+        Staking empty = new Staking(admin, address(token));
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether);
+        token.approve(address(empty), 5000 ether);
+        empty.stake(5000 ether, 100);
+        assertEq(empty.totalStakedOf(buyer), 5000 ether);
+        assertEq(token.balanceOf(address(empty)), 5000 ether);
+        vm.stopPrank();
+    }
+
+    function testUnstakePaysPrincipalEvenIfReserveEmpty() public {
+        Staking empty = new Staking(admin, address(token));
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether);
+        token.approve(address(empty), 5000 ether);
+        empty.stake(5000 ether, 100);
+        vm.warp(block.timestamp + 100 days);
+        uint256 beforeBal = token.balanceOf(buyer);
+        empty.unstake(1);
+        // Principal returned; bonus 0 because reserve was never funded
+        assertEq(token.balanceOf(buyer), beforeBal + 5000 ether);
+        vm.stopPrank();
+    }
+
+    function testUnstakePaysBonusAfterAdminFundsLater() public {
+        Staking empty = new Staking(admin, address(token));
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether);
+        token.approve(address(empty), 5000 ether);
+        empty.stake(5000 ether, 100);
+        vm.stopPrank();
+
+        vm.startPrank(admin);
+        token.approve(address(empty), 400 ether);
+        empty.fundRewards(400 ether);
+        vm.stopPrank();
+
+        vm.startPrank(buyer);
+        vm.warp(block.timestamp + 100 days);
+        uint256 beforeBal = token.balanceOf(buyer);
+        empty.unstake(1);
+        assertEq(token.balanceOf(buyer), beforeBal + 5400 ether);
+        vm.stopPrank();
+    }
+
+    function testAdminWithdrawAllPabd() public {
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether);
+        token.approve(address(staking), 5000 ether);
+        staking.stake(5000 ether, 100);
+        vm.stopPrank();
+
+        uint256 stakingBal = token.balanceOf(address(staking));
+        assertGt(stakingBal, 0);
+        uint256 adminBefore = token.balanceOf(admin);
+
+        vm.prank(admin);
+        staking.withdrawAllPabd(admin);
+
+        assertEq(token.balanceOf(address(staking)), 0);
+        assertEq(staking.rewardReserve(), 0);
+        assertEq(token.balanceOf(admin), adminBefore + stakingBal);
+    }
+
+    function testAdminWithdrawTokensPartial() public {
+        uint256 reserveBefore = staking.rewardReserve();
+        assertGt(reserveBefore, 1000 ether);
+
+        uint256 adminBefore = token.balanceOf(admin);
+        vm.prank(admin);
+        staking.withdrawTokens(address(token), admin, 1000 ether);
+
+        assertEq(token.balanceOf(admin), adminBefore + 1000 ether);
+        assertEq(staking.rewardReserve(), reserveBefore - 1000 ether);
+    }
+
+    function testNonAdminCannotWithdrawAll() public {
+        vm.prank(buyer);
+        vm.expectRevert();
+        staking.withdrawAllPabd(buyer);
+    }
+
     function testStakeRejectsBelowMinimum() public {
         vm.startPrank(buyer);
         usdt.approve(address(sale), 100 ether);
