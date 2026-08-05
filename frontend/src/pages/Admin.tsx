@@ -90,7 +90,7 @@ export function Admin() {
         </div>
         <div className={`mb-5 rounded-2xl border px-4 py-3 text-sm ${stakeReady ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200' : 'border-amber-400/30 bg-amber-500/10 text-amber-100'}`}>
           {stakeReady
-            ? 'Staking address is set. Staked PAB-D locks in the Staking contract (not treasury/admin). Ensure Staking pabd() matches Token Address and fundRewards is funded.'
+            ? 'Staking address is set. Staked PAB-D locks in the Staking contract. Admin can fundRewards later for bonuses.'
             : 'Staking is DISABLED until Admin sets Staking Address + Token Address. Redeploy Staking with token 0xb521… if the old address has no code.'}
         </div>
 
