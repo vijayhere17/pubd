@@ -43,7 +43,7 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
   const [loading, setLoading] = useState(false)
   // Stake from wallet balance (on-chain), not Laravel purchase ledger
   const available = Math.max(0, Number(walletPabd) || 0)
-  const minStake = Number(dashboard.settings.min_stake ?? 5000)
+  const minStake = Number(dashboard.settings.min_stake ?? 100)
   const selected = periods.find((p) => p.days === lockDays)
   const bonusPercent = periodPercent(selected)
 

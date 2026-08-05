@@ -92,10 +92,10 @@ class TransactionService
 
         $amount = (float) $data['amount'];
         $lockDays = (int) $data['lock_days'];
-        $minStake = 5000; // 5000 PAB-D = $500 at $0.10
+        $minStake = 100; // temporary test minimum (on-chain must match via setMinStakeAmount)
         if ($amount < $minStake) {
             throw ValidationException::withMessages([
-                'amount' => 'Minimum stake is 5000 PAB-D ($500 at current $0.10 price).',
+                'amount' => 'Minimum stake is 100 PAB-D.',
             ]);
         }
         $periods = collect($settings->lock_periods ?? []);
