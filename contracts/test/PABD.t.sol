@@ -99,6 +99,37 @@ contract PABDTest is Test {
         vm.stopPrank();
     }
 
+    function testStakeMovesPabdFromUserToStakingNotAdmin() public {
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether); // 5000 PAB-D
+
+        uint256 userBefore = token.balanceOf(buyer);
+        uint256 stakingBefore = token.balanceOf(address(staking));
+        uint256 adminBefore = token.balanceOf(admin);
+
+        token.approve(address(staking), 5000 ether);
+        staking.stake(5000 ether, 100);
+        vm.stopPrank();
+
+        assertEq(token.balanceOf(buyer), userBefore - 5000 ether, "user PAB-D must decrease");
+        assertEq(token.balanceOf(address(staking)), stakingBefore + 5000 ether, "staking contract holds principal");
+        assertEq(token.balanceOf(admin), adminBefore, "admin wallet must NOT receive stake principal");
+        assertEq(staking.totalStakedOf(buyer), 5000 ether);
+    }
+
+    function testStakeRejectsWhenRewardReserveEmpty() public {
+        // Fresh staking with zero reserve
+        Staking empty = new Staking(admin, address(token));
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether);
+        token.approve(address(empty), 5000 ether);
+        vm.expectRevert("Stake: reserve");
+        empty.stake(5000 ether, 100);
+        vm.stopPrank();
+    }
+
     function testStakeRejectsBelowMinimum() public {
         vm.startPrank(buyer);
         usdt.approve(address(sale), 100 ether);

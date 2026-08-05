@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
+import { JsonRpcProvider } from 'ethers'
 import { useWallet } from '../hooks/useWallet'
-import { getContracts, stakeTokens, parseUnits } from '../lib/contracts'
+import { assertStakingReady, getContracts, stakeTokens, parseUnits } from '../lib/contracts'
 import { recordStake, type DashboardData } from '../lib/api'
 import { useToast } from '../store/toast'
-import { ERC20_ABI } from '../lib/config'
+import { ERC20_ABI, rpcUrlForChain } from '../lib/config'
 import { Contract } from 'ethers'
 
 type LockPeriod = { days: number; percent?: number; apy?: number }
@@ -71,8 +72,15 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
     try {
       await ensureBsc()
       const signer = await getSigner()
+      const chainId = Number(dashboard.settings.chain_id || 56)
+      const readProvider = new JsonRpcProvider(rpcUrlForChain(chainId), chainId)
+
+      // Fail fast with a clear reason before MetaMask pops (wrong staking / empty reserve / bad token).
+      await assertStakingReady(readProvider, staking_address, token_address, amount, lockDays)
+
       const token = new Contract(token_address, ERC20_ABI, signer)
       const value = parseUnits(amount, 18)
+      // Approve the Staking contract (not admin wallet). Principal is locked in Staking.
       const approveTx = await token.approve(staking_address, value)
       await approveTx.wait()
       const { staking } = getContracts(signer, { staking: staking_address })
@@ -104,6 +112,9 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
         </div>
         <p className="mb-1 text-[#b9c2d6]">Staking is in <b className="text-[#f0d48a]">PAB-D</b> only.</p>
         <p className="mb-1 text-sm text-[#7c879f]">Wallet balance: {available.toLocaleString()} PAB-D</p>
+        <p className="mb-1 text-sm text-[#7c879f]">
+          On stake, PAB-D leaves your wallet and locks in the <b className="text-[#f0d48a]">Staking contract</b> (not the admin wallet).
+        </p>
         <p className="mb-5 text-sm text-[#f0d48a]">Minimum stake: {minStake.toLocaleString()} PAB-D</p>
 
         <label className="mb-2 block text-sm text-[#7c879f]">Stake Amount (PAB-D)</label>

@@ -104,9 +104,10 @@ class TransactionService
         // Flat period bonus: stake 5000 for 100 days at 8% => reward 400 (total 5400)
         $estimated = round($amount * ($bonusPercent / 100), 8);
 
-        $this->chain->assertSuccessfulTx(
+        $this->chain->assertStakeTokenTransfer(
             $txHash,
             $settings->staking_address,
+            $settings->token_address,
             $user->wallet_address,
             (int) ($settings->chain_id ?: 56)
         );

@@ -68,7 +68,7 @@ class BlockchainVerifyService
 
         if ($expectedTo && $receipt['to'] && strtolower($expectedTo) !== $receipt['to']) {
             throw ValidationException::withMessages([
-                'tx_hash' => 'Transaction was not sent to the configured Sale contract.',
+                'tx_hash' => 'Transaction was not sent to the configured contract.',
             ]);
         }
 
@@ -79,6 +79,70 @@ class BlockchainVerifyService
         }
 
         return $receipt;
+    }
+
+    /**
+     * Require an ERC-20 Transfer of PAB-D from the staker into the Staking contract.
+     * Stake principal is locked in Staking — it does NOT go to the admin wallet.
+     */
+    public function assertStakeTokenTransfer(
+        string $txHash,
+        string $stakingAddress,
+        string $tokenAddress,
+        string $fromAddress,
+        int $chainId = 56
+    ): array {
+        $receipt = $this->assertSuccessfulTx($txHash, $stakingAddress, $fromAddress, $chainId);
+        $raw = $this->getRawReceipt($txHash, $chainId);
+        $logs = is_array($raw['logs'] ?? null) ? $raw['logs'] : [];
+
+        $transferTopic = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+        $fromTopic = '0x'.str_pad(strtolower(substr($fromAddress, 2)), 64, '0', STR_PAD_LEFT);
+        $toTopic = '0x'.str_pad(strtolower(substr($stakingAddress, 2)), 64, '0', STR_PAD_LEFT);
+        $token = strtolower($tokenAddress);
+
+        foreach ($logs as $log) {
+            if (! is_array($log)) {
+                continue;
+            }
+            $address = strtolower((string) ($log['address'] ?? ''));
+            $topics = $log['topics'] ?? [];
+            if ($address !== $token) {
+                continue;
+            }
+            if (
+                isset($topics[0], $topics[1], $topics[2])
+                && strtolower((string) $topics[0]) === $transferTopic
+                && strtolower((string) $topics[1]) === $fromTopic
+                && strtolower((string) $topics[2]) === $toTopic
+            ) {
+                return $receipt;
+            }
+        }
+
+        throw ValidationException::withMessages([
+            'tx_hash' => 'Stake tx did not transfer PAB-D from wallet into the Staking contract. History not recorded.',
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function getRawReceipt(string $txHash, int $chainId = 56): array
+    {
+        $txHash = strtolower($txHash);
+        $response = Http::timeout(20)->post($this->rpcUrl($chainId), [
+            'jsonrpc' => '2.0',
+            'id' => 1,
+            'method' => 'eth_getTransactionReceipt',
+            'params' => [$txHash],
+        ]);
+
+        if (! $response->ok() || ! is_array($response->json('result'))) {
+            throw ValidationException::withMessages(['tx_hash' => 'Unable to load transaction receipt.']);
+        }
+
+        return $response->json('result');
     }
 
     public function isValidAddress(?string $address): bool
