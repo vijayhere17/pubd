@@ -56,6 +56,7 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
     event Unstaked(address indexed user, uint256 indexed stakeId, uint256 amount, uint256 rewards);
     event LockPeriodUpdated(uint256 daysLocked, uint256 rewardBps, bool active);
     event RewardsFunded(uint256 amount);
+    event TokensWithdrawn(address indexed token, address indexed to, uint256 amount);
 
     constructor(address admin, address pabd_) {
         require(admin != address(0) && pabd_ != address(0), "Stake: zero");
@@ -165,6 +166,34 @@ contract Staking is AccessControl, Pausable, ReentrancyGuard {
         pabd.safeTransferFrom(msg.sender, address(this), amount);
         rewardReserve += amount;
         emit RewardsFunded(amount);
+    }
+
+    /// @notice Admin emergency withdraw of any ERC-20 held by this contract (including all PAB-D).
+    /// @dev Pulling PAB-D may leave active stakes unable to unstake. Prefer withdrawAllPabd for a full drain.
+    function withdrawTokens(address token, address to, uint256 amount)
+        external
+        onlyRole(DEFAULT_ADMIN_ROLE)
+    {
+        require(to != address(0), "Stake: zero");
+        require(amount > 0, "Stake: amount");
+        IERC20(token).safeTransfer(to, amount);
+        if (token == address(pabd)) {
+            uint256 bal = pabd.balanceOf(address(this));
+            if (rewardReserve > bal) {
+                rewardReserve = bal;
+            }
+        }
+        emit TokensWithdrawn(token, to, amount);
+    }
+
+    /// @notice Admin emergency withdraw of the entire PAB-D balance (principal + reward reserve).
+    function withdrawAllPabd(address to) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(to != address(0), "Stake: zero");
+        uint256 amount = pabd.balanceOf(address(this));
+        require(amount > 0, "Stake: empty");
+        rewardReserve = 0;
+        pabd.safeTransfer(to, amount);
+        emit TokensWithdrawn(address(pabd), to, amount);
     }
 
     function setLockPeriod(uint256 daysLocked, uint256 rewardBps, bool active)

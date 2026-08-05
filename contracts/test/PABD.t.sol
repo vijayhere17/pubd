@@ -130,6 +130,44 @@ contract PABDTest is Test {
         vm.stopPrank();
     }
 
+    function testAdminWithdrawAllPabd() public {
+        vm.startPrank(buyer);
+        usdt.approve(address(sale), 500 ether);
+        sale.buy(500 ether);
+        token.approve(address(staking), 5000 ether);
+        staking.stake(5000 ether, 100);
+        vm.stopPrank();
+
+        uint256 stakingBal = token.balanceOf(address(staking));
+        assertGt(stakingBal, 0);
+        uint256 adminBefore = token.balanceOf(admin);
+
+        vm.prank(admin);
+        staking.withdrawAllPabd(admin);
+
+        assertEq(token.balanceOf(address(staking)), 0);
+        assertEq(staking.rewardReserve(), 0);
+        assertEq(token.balanceOf(admin), adminBefore + stakingBal);
+    }
+
+    function testAdminWithdrawTokensPartial() public {
+        uint256 reserveBefore = staking.rewardReserve();
+        assertGt(reserveBefore, 1000 ether);
+
+        uint256 adminBefore = token.balanceOf(admin);
+        vm.prank(admin);
+        staking.withdrawTokens(address(token), admin, 1000 ether);
+
+        assertEq(token.balanceOf(admin), adminBefore + 1000 ether);
+        assertEq(staking.rewardReserve(), reserveBefore - 1000 ether);
+    }
+
+    function testNonAdminCannotWithdrawAll() public {
+        vm.prank(buyer);
+        vm.expectRevert();
+        staking.withdrawAllPabd(buyer);
+    }
+
     function testStakeRejectsBelowMinimum() public {
         vm.startPrank(buyer);
         usdt.approve(address(sale), 100 ether);
