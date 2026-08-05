@@ -34,6 +34,14 @@ function periodPercent(p?: LockPeriod) {
   return Number(p.percent ?? p.apy ?? 0)
 }
 
+function fmtUsd(n: number, d = 2) {
+  return n.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: 0 })
+}
+
+function fmtPabd(n: number) {
+  return n.toLocaleString(undefined, { maximumFractionDigits: 4 })
+}
+
 export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: Props) {
   const { getSigner, ensureBsc } = useWallet()
   const toast = useToast()
@@ -41,15 +49,24 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
   const [amount, setAmount] = useState('')
   const [lockDays, setLockDays] = useState(100)
   const [loading, setLoading] = useState(false)
-  // Stake from wallet balance (on-chain), not Laravel purchase ledger
+
   const available = Math.max(0, Number(walletPabd) || 0)
-  const minStake = Number(dashboard.settings.min_stake ?? 100)
+  const price = Number(dashboard.token_price || 0.1)
+  const minStakeUsd = Number(dashboard.settings.min_stake_usd ?? 500)
+  const minStakePabd = Number(
+    dashboard.settings.min_stake
+    ?? (price > 0 ? minStakeUsd / price : 5000),
+  )
   const selected = periods.find((p) => p.days === lockDays)
   const bonusPercent = periodPercent(selected)
 
   const stakeAmount = Number(amount) || 0
+  const stakeUsd = stakeAmount * price
+  const availableUsd = available * price
   const reward = useMemo(() => stakeAmount * (bonusPercent / 100), [stakeAmount, bonusPercent])
+  const rewardUsd = reward * price
   const totalReturn = stakeAmount + reward
+  const totalReturnUsd = totalReturn * price
 
   if (!open) return null
 
@@ -59,8 +76,11 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
       toast.push('Enter an amount within your wallet PAB-D balance', 'error')
       return
     }
-    if (n < minStake) {
-      toast.push(`Minimum stake is ${minStake.toLocaleString()} PAB-D.`, 'error')
+    if (n < minStakePabd - 1e-8) {
+      toast.push(
+        `Minimum stake is $${fmtUsd(minStakeUsd)} (≈ ${fmtPabd(minStakePabd)} PAB-D at $${fmtUsd(price, 4)}).`,
+        'error',
+      )
       return
     }
     const { token_address, staking_address } = dashboard.settings
@@ -75,12 +95,10 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
       const chainId = Number(dashboard.settings.chain_id || 56)
       const readProvider = new JsonRpcProvider(rpcUrlForChain(chainId), chainId)
 
-      // Fail fast with a clear reason before MetaMask pops (wrong staking / empty reserve / bad token).
       await assertStakingReady(readProvider, staking_address, token_address, amount, lockDays)
 
       const token = new Contract(token_address, ERC20_ABI, signer)
       const value = parseUnits(amount, 18)
-      // Approve the Staking contract (not admin wallet). Principal is locked in Staking.
       const approveTx = await token.approve(staking_address, value)
       await approveTx.wait()
       const { staking } = getContracts(signer, { staking: staking_address })
@@ -93,7 +111,10 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
         onchain_stake_id: stakeId ?? undefined,
         tx_hash: hash,
       })
-      toast.push(`Staked! You will claim ${totalReturn.toLocaleString()} PAB-D after ${lockDays} days.`, 'success')
+      toast.push(
+        `Staked! You will claim ${fmtPabd(totalReturn)} PAB-D (≈ $${fmtUsd(totalReturnUsd)}) after ${lockDays} days.`,
+        'success',
+      )
       onSuccess(res.dashboard)
       onClose()
     } catch (e) {
@@ -110,22 +131,31 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
           <h2 className="text-2xl font-semibold text-[#f6e3aa]">Stake PAB-D</h2>
           <button onClick={onClose} className="text-[#7c879f]">✕</button>
         </div>
-        <p className="mb-1 text-[#b9c2d6]">Staking is in <b className="text-[#f0d48a]">PAB-D</b> only.</p>
-        <p className="mb-1 text-sm text-[#7c879f]">Wallet balance: {available.toLocaleString()} PAB-D</p>
-        <p className="mb-1 text-sm text-[#7c879f]">
-          On stake, PAB-D leaves your wallet and locks in the <b className="text-[#f0d48a]">Staking contract</b> (not the admin wallet).
+        <p className="mb-1 text-[#b9c2d6]">
+          Stake in <b className="text-[#f0d48a]">PAB-D</b> · price <b className="text-[#f0d48a]">${fmtUsd(price, 4)}</b>
         </p>
-        <p className="mb-5 text-sm text-[#f0d48a]">Minimum stake: {minStake.toLocaleString()} PAB-D</p>
+        <p className="mb-1 text-sm text-[#7c879f]">
+          Wallet: {fmtPabd(available)} PAB-D ≈ ${fmtUsd(availableUsd)}
+        </p>
+        <p className="mb-1 text-sm text-[#7c879f]">
+          Locked in the <b className="text-[#f0d48a]">Staking contract</b> (not admin wallet).
+        </p>
+        <p className="mb-5 text-sm text-[#f0d48a]">
+          Minimum: ${fmtUsd(minStakeUsd)} ≈ {fmtPabd(minStakePabd)} PAB-D
+        </p>
 
         <label className="mb-2 block text-sm text-[#7c879f]">Stake Amount (PAB-D)</label>
         <input
           type="number"
-          min={minStake}
+          min={minStakePabd}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          className="mb-4 w-full rounded-xl border border-[rgba(217,169,79,0.25)] bg-[#040914] px-4 py-3 outline-none focus:border-[#d9a94f]"
-          placeholder={String(minStake)}
+          className="mb-1 w-full rounded-xl border border-[rgba(217,169,79,0.25)] bg-[#040914] px-4 py-3 outline-none focus:border-[#d9a94f]"
+          placeholder={String(minStakePabd)}
         />
+        <p className="mb-4 text-xs text-[#7c879f]">
+          ≈ ${fmtUsd(stakeUsd)} USD
+        </p>
 
         <label className="mb-2 block text-sm text-[#7c879f]">Lock Period</label>
         <select
@@ -143,13 +173,19 @@ export function StakeModal({ open, onClose, dashboard, walletPabd, onSuccess }: 
         <div className="mb-3 space-y-2 rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-sm">
           <div className="flex items-center justify-between">
             <span className="text-[#7c879f]">Bonus</span>
-            <b className="text-[#f6e3aa]">{bonusPercent}% → {reward.toLocaleString(undefined, { maximumFractionDigits: 4 })} PAB-D</b>
+            <b className="text-[#f6e3aa]">
+              {bonusPercent}% → {fmtPabd(reward)} PAB-D ≈ ${fmtUsd(rewardUsd)}
+            </b>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-[#7c879f]">You will receive</span>
-            <b className="text-xl text-[#f6e3aa]">{totalReturn.toLocaleString(undefined, { maximumFractionDigits: 4 })} PAB-D</b>
+            <b className="text-xl text-[#f6e3aa]">{fmtPabd(totalReturn)} PAB-D</b>
           </div>
-          <p className="text-xs text-[#7c879f]">Shown instantly. Claimable only after {lockDays} days.</p>
+          <div className="flex items-center justify-between">
+            <span className="text-[#7c879f]">≈ USD value</span>
+            <b className="text-[#f0d48a]">${fmtUsd(totalReturnUsd)}</b>
+          </div>
+          <p className="text-xs text-[#7c879f]">Claimable only after {lockDays} days (manual unstake).</p>
         </div>
 
         <button

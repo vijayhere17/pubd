@@ -144,7 +144,8 @@ export function Admin() {
               the app will use the new Sale for payments. Clear it to stop all buys.
             </p>
             {[
-              ['token_price', 'Token Price'],
+              ['token_price', 'Token Price (USD)'],
+              ['min_stake_usd', 'Min Stake USD (e.g. 500)'],
               ['min_buy', 'Minimum Buy'],
               ['max_buy', 'Maximum Buy'],
               ['usdt_address', 'USDT Address *'],
@@ -161,12 +162,23 @@ export function Admin() {
                 <span className={`mb-1 block ${key === 'sale_address' ? 'text-[#f0d48a]' : 'text-[#7c879f]'}`}>{label}</span>
                 <input
                   className={`w-full rounded-xl border bg-[#040914] px-3 py-2 ${key === 'sale_address' ? 'border-[#d9a94f]/50' : 'border-white/10'}`}
-                  value={String(settings[key] ?? '')}
+                  value={String(settings[key] ?? (key === 'min_stake_usd' ? '500' : ''))}
                   placeholder={key.includes('address') || key.includes('wallet') ? '0x...' : ''}
                   onChange={(e) => setSettings((s) => ({ ...s, [key]: e.target.value }))}
                 />
               </label>
             ))}
+            <p className="md:col-span-2 text-xs text-[#7c879f]">
+              Min stake in PAB-D = Min Stake USD ÷ Token Price
+              {(() => {
+                const price = Number(settings.token_price || 0.1)
+                const usd = Number(settings.min_stake_usd || 500)
+                const pabd = price > 0 ? usd / price : 0
+                return price > 0
+                  ? ` → currently ≈ ${pabd.toLocaleString(undefined, { maximumFractionDigits: 4 })} PAB-D. If price changes, also call setMinStakeAmount on the Staking contract so on-chain min matches.`
+                  : '.'
+              })()}
+            </p>
             <label className="flex items-center gap-3 text-sm md:col-span-2">
               <input
                 type="checkbox"

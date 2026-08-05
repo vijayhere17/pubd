@@ -51,6 +51,7 @@ class AdminController extends Controller
             'rpc_url' => ['nullable', 'string'],
             'explorer_url' => ['nullable', 'string'],
             'stake_apy_default' => ['nullable', 'numeric'],
+            'min_stake_usd' => ['nullable', 'numeric', 'gt:0'],
             'lock_periods' => ['nullable', 'array'],
             'vesting_schedule' => ['nullable', 'array'],
         ]);
